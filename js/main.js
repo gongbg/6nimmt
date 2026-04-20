@@ -1,0 +1,11 @@
+import { initializeApp } from "./ui.js";
+
+if (typeof window.io !== "function") {
+  throw new Error("Socket.io client library is not loaded.");
+}
+
+const socket = window.io("http://localhost:3000", {
+  transports: ["websocket", "polling"],
+});
+
+initializeApp(socket);
