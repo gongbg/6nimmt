@@ -112,6 +112,7 @@ function createHandCard(card, options = {}) {
     highlighted = false,
     dimmed = false,
   } = options;
+
   const sizeClass = compact
     ? "w-11 h-14 sm:w-12 sm:h-16 rounded-xl"
     : "w-12 h-[4.5rem] sm:w-14 sm:h-20 lg:w-[4.5rem] lg:h-28 rounded-xl";
@@ -236,6 +237,7 @@ function createAppState(socket) {
     lobbyStatus: "서버에 연결 중입니다.",
     roomStatus: "플레이어를 기다리는 중입니다.",
     transientStatus: "",
+    pendingSubmit: false,
     playLog: [],
     recentPlayedNumbers: [],
     highlightedRowIds: [],
@@ -275,6 +277,7 @@ function getUiElements() {
     phaseIndicator: document.getElementById("phase-indicator"),
     deckCount: document.getElementById("deck-count"),
     selectionIndicator: document.getElementById("selection-indicator"),
+    submissionStatusList: document.getElementById("submission-status-list"),
     playLog: document.getElementById("play-log"),
     modal: document.getElementById("round-summary-modal"),
     summaryScoreboard: document.getElementById("summary-scoreboard"),
@@ -316,52 +319,12 @@ function getPlayerName(state, playerId) {
   return state?.players?.find((player) => player.id === playerId)?.nickname ?? playerId;
 }
 
-function createRoomPlayerBadge(player, isHost, isSelf) {
-  const card = createUiElement(
-    "div",
-    "rounded-[1.25rem] border border-outline-variant/15 bg-surface-container-lowest/70 px-4 py-4 flex items-center justify-between gap-4"
-  );
-  const left = createUiElement("div", "flex items-center gap-3");
-  const avatar = createUiElement(
-    "div",
-    player.isBot
-      ? "flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/15 text-primary"
-      : "flex h-11 w-11 items-center justify-center rounded-2xl bg-secondary-container/25 text-secondary"
-  );
-  avatar.appendChild(
-    createUiElement(
-      "span",
-      "material-symbols-outlined",
-      player.isBot ? "smart_toy" : "person"
-    )
-  );
-  const textWrap = createUiElement("div");
-  const name = createUiElement(
-    "p",
-    "font-headline text-lg font-black text-on-surface",
-    `${player.nickname}${isSelf ? " (나)" : ""}`
-  );
-  const meta = createUiElement(
-    "p",
-    "text-sm text-on-surface-variant",
-    player.isBot ? "Bot Player" : "Human Player"
-  );
-
-  textWrap.append(name, meta);
-  left.append(avatar, textWrap);
-  card.appendChild(left);
-
-  if (isHost) {
-    card.appendChild(
-      createUiElement(
-        "span",
-        "rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-black text-primary",
-        "HOST"
-      )
-    );
-  }
-
-  return card;
+function withAck(socket, eventName, payload) {
+  return new Promise((resolve) => {
+    socket.emit(eventName, payload, (response) => {
+      resolve(response ?? { ok: false, error: "No response from server." });
+    });
+  });
 }
 
 function renderConnectionBadge(appState, elements) {
@@ -370,7 +333,6 @@ function renderConnectionBadge(appState, elements) {
     disconnected: "border-error-container/25 bg-error-container/10 text-error",
     connecting: "border-outline-variant/20 bg-surface-container-lowest/70 text-on-surface-variant",
   };
-
   const labelByStatus = {
     connected: "서버 연결됨",
     disconnected: "서버 연결 끊김",
@@ -386,6 +348,51 @@ function renderConnectionBadge(appState, elements) {
 
 function renderLobby(appState, elements) {
   elements.lobbyStatus.textContent = appState.lobbyStatus;
+}
+
+function createRoomPlayerBadge(player, isHost, isSelf) {
+  const card = createUiElement(
+    "div",
+    "rounded-[1.25rem] border border-outline-variant/15 bg-surface-container-lowest/70 px-4 py-4 flex items-center justify-between gap-4"
+  );
+  const left = createUiElement("div", "flex items-center gap-3");
+  const avatar = createUiElement(
+    "div",
+    player.isBot
+      ? "flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/15 text-primary"
+      : "flex h-11 w-11 items-center justify-center rounded-2xl bg-secondary-container/25 text-secondary"
+  );
+  avatar.appendChild(
+    createUiElement("span", "material-symbols-outlined", player.isBot ? "smart_toy" : "person")
+  );
+  const textWrap = createUiElement("div");
+  textWrap.append(
+    createUiElement(
+      "p",
+      "font-headline text-lg font-black text-on-surface",
+      `${player.nickname}${isSelf ? " (나)" : ""}`
+    ),
+    createUiElement(
+      "p",
+      "text-sm text-on-surface-variant",
+      player.isBot ? "Bot Player" : "Human Player"
+    )
+  );
+
+  left.append(avatar, textWrap);
+  card.appendChild(left);
+
+  if (isHost) {
+    card.appendChild(
+      createUiElement(
+        "span",
+        "rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-black text-primary",
+        "HOST"
+      )
+    );
+  }
+
+  return card;
 }
 
 function renderRoom(appState, elements) {
@@ -447,18 +454,31 @@ function renderOpponentHud(state, appState, elements) {
 
 function renderBoardRows(state, appState, elements) {
   const rotations = ["-rotate-1", "rotate-1", "rotate-2", "-rotate-2", "rotate-1"];
+  const manualChoice = state.manualChoice;
+  const canChooseRow = Boolean(manualChoice?.isChooser);
+  const allowedRowIds = new Set(manualChoice?.allowedRowIds ?? []);
+
   elements.boardRows.innerHTML = "";
 
   state.rows.forEach((row) => {
-    const rowElement = createUiElement(
-      "div",
-      [
-        "flex items-center gap-1.5 lg:gap-3 bg-surface-container-low p-2 lg:p-3 rounded-[1.75rem] w-full relative border border-outline-variant/5 shadow-inner",
-        appState.highlightedRowIds.includes(row.id) ? "row-capture-flash" : "",
-      ]
-        .filter(Boolean)
-        .join(" ")
-    );
+    const rowClasses = [
+      "flex items-center gap-1.5 lg:gap-3 bg-surface-container-low p-2 lg:p-3 rounded-[1.75rem] w-full relative border border-outline-variant/5 shadow-inner",
+    ];
+
+    if (appState.highlightedRowIds.includes(row.id)) {
+      rowClasses.push("row-capture-flash");
+    }
+
+    if (canChooseRow && allowedRowIds.has(row.id)) {
+      rowClasses.push("row-selectable");
+    }
+
+    if (manualChoice?.recommendedRowId === row.id) {
+      rowClasses.push("row-guided");
+    }
+
+    const rowElement = createUiElement("div", rowClasses.join(" "));
+    rowElement.dataset.rowId = String(row.id);
 
     row.cards.forEach((card, index) => {
       const cardElement = createTableCard(card, rotations[index % rotations.length]);
@@ -481,7 +501,6 @@ function renderBoardRows(state, appState, elements) {
 
 function renderCurrentTurnCards(state, elements) {
   elements.currentTurnCards.innerHTML = "";
-
   const pendingResolution = state.round.pendingResolution;
 
   if (!pendingResolution?.orderedCards?.length) {
@@ -509,19 +528,20 @@ function renderCurrentTurnCards(state, elements) {
         .filter(Boolean)
         .join(" ")
     );
-    const cardElement = createHandCard(entry.card, {
-      compact: true,
-      disabled: true,
-      highlighted: isActive,
-      dimmed: isResolved,
-    });
-    const caption = createUiElement(
-      "div",
-      "text-xs font-bold tracking-wide text-on-surface-variant",
-      getPlayerName(state, entry.playerId)
-    );
 
-    item.append(cardElement, caption);
+    item.append(
+      createHandCard(entry.card, {
+        compact: true,
+        disabled: true,
+        highlighted: isActive,
+        dimmed: isResolved,
+      }),
+      createUiElement(
+        "div",
+        "text-xs font-bold tracking-wide text-on-surface-variant",
+        getPlayerName(state, entry.playerId)
+      )
+    );
     wrap.appendChild(item);
   });
 
@@ -552,34 +572,96 @@ function renderPlayerHand(state, appState, elements) {
   });
 }
 
+function renderSubmissionStatus(state, elements) {
+  if (!elements.submissionStatusList) {
+    return;
+  }
+
+  const statuses = state.submissionStatus ?? [];
+  elements.submissionStatusList.innerHTML = "";
+
+  if (!statuses.length) {
+    elements.submissionStatusList.appendChild(
+      createUiElement(
+        "div",
+        "rounded-2xl border border-outline-variant/15 bg-surface-container-lowest/60 px-4 py-3 text-sm text-on-surface-variant",
+        "아직 제출 정보가 없습니다."
+      )
+    );
+    return;
+  }
+
+  statuses.forEach((entry) => {
+    const badgeClass = entry.waitingForPlacement
+      ? "border-primary/25 bg-primary/10 text-primary"
+      : entry.submitted
+        ? "border-secondary/25 bg-secondary/10 text-secondary"
+        : "border-outline-variant/20 bg-surface-container-lowest text-on-surface-variant";
+    const badgeText = entry.waitingForPlacement
+      ? "행 선택중..."
+      : entry.submitted
+        ? "제출완료!"
+        : "고민중...";
+    const row = createUiElement(
+      "div",
+      "rounded-2xl border border-outline-variant/15 bg-surface-container-lowest/65 px-3 py-3 flex items-center justify-between gap-3"
+    );
+    const left = createUiElement("div", "flex items-center gap-3");
+    left.append(
+      createUiElement(
+        "span",
+        entry.isBot ? "material-symbols-outlined text-primary" : "material-symbols-outlined text-secondary",
+        entry.isBot ? "smart_toy" : "person"
+      ),
+      createUiElement("span", "font-semibold text-on-surface", entry.nickname)
+    );
+    row.append(
+      left,
+      createUiElement(
+        "span",
+        `rounded-full border px-3 py-1 text-xs font-black ${badgeClass}`,
+        badgeText
+      )
+    );
+    elements.submissionStatusList.appendChild(row);
+  });
+}
+
 function buildStatusMessage(state, appState) {
   if (appState.transientStatus) {
     return appState.transientStatus;
   }
 
-  const round = state.round;
-  const currentPlayer = getCurrentPlayer(state, appState.playerId);
+  if (state.manualChoice) {
+    if (state.manualChoice.isChooser) {
+      return "카드를 배치할 행을 선택하세요!";
+    }
 
-  if (round.phase === "finished") {
-    return "라운드가 종료되었습니다. 결과를 확인하거나 다음 라운드를 시작하세요.";
+    return `${state.manualChoice.nickname}님이 카드를 배치 중입니다.`;
   }
 
-  if (round.pendingResolution) {
-    const currentStep = round.pendingResolution.steps[round.pendingResolution.currentStepIndex];
+  const currentPlayer = getCurrentPlayer(state, appState.playerId);
+
+  if (state.round.phase === "finished") {
+    return "라운드가 종료되었습니다. 결과를 확인하고 다음 라운드를 시작하세요.";
+  }
+
+  if (state.round.pendingResolution) {
+    const currentStep = state.round.pendingResolution.steps[state.round.pendingResolution.currentStepIndex];
 
     if (currentStep) {
-      return `${getPlayerName(state, currentStep.playerId)}의 ${currentStep.card.number} 카드가 배치될 차례입니다.`;
+      return `${getPlayerName(state, currentStep.playerId)}님의 배치를 기다리는 중입니다.`;
     }
 
     return "제출된 카드를 정리하고 있습니다.";
   }
 
-  if (currentPlayer && round.selectedCardsByPlayer?.[currentPlayer.id]) {
+  if (currentPlayer && state.round.selectedCardsByPlayer?.[currentPlayer.id]) {
     return "카드를 제출했습니다. 다른 플레이어를 기다리는 중입니다.";
   }
 
   if (appState.selectedCardNumber !== null) {
-    return `${appState.selectedCardNumber}번 카드를 선택했습니다. 제출 버튼을 눌러 서버로 전송하세요.`;
+    return `${appState.selectedCardNumber}번 카드를 선택했습니다. 제출 버튼을 누르세요.`;
   }
 
   return "카드를 선택하고 제출하세요.";
@@ -587,37 +669,43 @@ function buildStatusMessage(state, appState) {
 
 function renderStatus(state, appState, elements) {
   const currentPlayer = getCurrentPlayer(state, appState.playerId);
-  const totalTurns = (currentPlayer?.handCount ?? currentPlayer?.hand?.length ?? 0) + state.round.turn + Number(Boolean(state.round.pendingResolution));
   const displayedTurn = Math.min(state.round.turn + 1, 10);
   const submitted = Boolean(state.round.selectedCardsByPlayer?.[appState.playerId]);
+  const submittedOrPending = submitted || appState.pendingSubmit;
   const isResolving = Boolean(state.round.pendingResolution);
+  const isChoosingRow = Boolean(state.manualChoice?.isChooser);
 
-  elements.roundIndicator.textContent = `Round ${state.round.number} • Turn ${displayedTurn} / ${Math.max(totalTurns, 10)}`;
+  elements.roundIndicator.textContent = `Round ${state.round.number} • Turn ${displayedTurn} / 10`;
   elements.statusMessage.textContent = buildStatusMessage(state, appState);
   elements.playerPenaltyPoints.textContent = String(
     getDisplayPenaltyPoints(currentPlayer, state.round)
   );
   elements.phaseIndicator.textContent = state.round.phase;
   elements.deckCount.textContent = String(state.deck.length);
-  elements.selectionIndicator.textContent = isResolving
-    ? "처리 중"
-    : submitted
-      ? "제출 완료"
-      : appState.selectedCardNumber === null
-        ? "대기 중"
-        : `${appState.selectedCardNumber} 선택`;
+  elements.selectionIndicator.textContent = isChoosingRow
+    ? "행 선택"
+    : isResolving
+      ? "처리 중"
+      : submittedOrPending
+        ? "제출 완료"
+        : appState.selectedCardNumber === null
+          ? "대기 중"
+          : `${appState.selectedCardNumber} 선택`;
 
+  elements.submitButton.textContent = submittedOrPending ? "제출 완료!" : "카드 제출";
   elements.submitButton.disabled =
     !currentPlayer ||
     !appState.room?.roomCode ||
     isResolving ||
+    isChoosingRow ||
     state.round.phase === "finished" ||
     appState.selectedCardNumber === null ||
-    submitted;
+    submittedOrPending;
   elements.restartButton.disabled =
     !appState.room ||
     appState.room.hostPlayerId !== appState.playerId ||
-    isResolving;
+    isResolving ||
+    Boolean(state.manualChoice);
 }
 
 function renderPlayLog(appState, elements) {
@@ -645,31 +733,25 @@ function renderPlayLog(appState, elements) {
         .join(" ")
     );
     const top = createUiElement("div", "flex items-center justify-between gap-3");
-    const title = createUiElement(
-      "div",
-      "font-headline font-bold text-on-surface",
-      `${entry.playerName} played ${entry.cardNumber}`
+    top.append(
+      createUiElement(
+        "div",
+        "font-headline font-bold text-on-surface",
+        `${entry.playerName} played ${entry.cardNumber}`
+      ),
+      createUiElement(
+        "span",
+        "rounded-full px-3 py-1 text-xs font-black border border-outline-variant/20 bg-surface-container-high text-primary",
+        `Row ${entry.rowId}`
+      )
     );
-    const badge = createUiElement(
-      "span",
-      "rounded-full px-3 py-1 text-xs font-black border border-outline-variant/20 bg-surface-container-high text-primary",
-      `Row ${entry.rowId}`
-    );
-    const description = createUiElement(
-      "p",
-      "mt-2 text-sm text-on-surface-variant",
-      entry.message
-    );
-
-    top.append(title, badge);
-    card.append(top, description);
+    card.append(top, createUiElement("p", "mt-2 text-sm text-on-surface-variant", entry.message));
     elements.playLog.appendChild(card);
   });
 }
 
 function renderRoundSummary(state, appState, elements) {
   elements.summaryScoreboard.innerHTML = "";
-
   const scores = [...(state.round.finalScores ?? [])].sort(
     (left, right) => left.totalPenaltyPoints - right.totalPenaltyPoints
   );
@@ -681,27 +763,36 @@ function renderRoundSummary(state, appState, elements) {
       "flex items-center justify-between gap-4 rounded-[1.5rem] border border-outline-variant/15 bg-surface-container-low/80 px-4 py-4"
     );
     const left = createUiElement("div", "flex items-center gap-4");
-    const rank = createUiElement(
-      "div",
-      "flex h-11 w-11 items-center justify-center rounded-full bg-surface-container-lowest text-primary font-black",
-      String(index + 1)
+    left.append(
+      createUiElement(
+        "div",
+        "flex h-11 w-11 items-center justify-center rounded-full bg-surface-container-lowest text-primary font-black",
+        String(index + 1)
+      ),
+      (() => {
+        const textWrap = createUiElement("div");
+        textWrap.append(
+          createUiElement(
+            "p",
+            "font-headline text-lg font-black text-on-surface",
+            player?.nickname ?? entry.playerId
+          ),
+          createUiElement(
+            "p",
+            "text-sm text-on-surface-variant",
+            `이번 라운드 +${entry.roundPenaltyPoints} • 누적 ${entry.totalPenaltyPoints}`
+          )
+        );
+        return textWrap;
+      })()
     );
-    const textWrap = createUiElement("div");
+
     const right = createUiElement(
       "div",
       "rounded-full border border-outline-variant/20 bg-surface-container-lowest px-4 py-2 text-sm font-black text-primary flex items-center gap-2"
     );
-
-    textWrap.append(
-      createUiElement("p", "font-headline text-lg font-black text-on-surface", player?.nickname ?? entry.playerId),
-      createUiElement(
-        "p",
-        "text-sm text-on-surface-variant",
-        `이번 라운드 +${entry.roundPenaltyPoints} • 누적 ${entry.totalPenaltyPoints}`
-      )
-    );
     right.append(createBullIcon("text-current"), document.createTextNode(String(entry.totalPenaltyPoints)));
-    left.append(rank, textWrap);
+
     row.append(left, right);
     elements.summaryScoreboard.appendChild(row);
   });
@@ -721,6 +812,7 @@ function renderGame(state, appState, elements) {
   renderCurrentTurnCards(state, elements);
   renderPlayerHand(state, appState, elements);
   renderStatus(state, appState, elements);
+  renderSubmissionStatus(state, elements);
   renderPlayLog(appState, elements);
   renderRoundSummary(state, appState, elements);
 }
@@ -747,22 +839,6 @@ function renderApp(appState, elements) {
   }
 }
 
-function getNickname(elements) {
-  return elements.nicknameInput.value.trim();
-}
-
-function getRoomCode(elements) {
-  return elements.roomCodeInput.value.trim().toUpperCase();
-}
-
-function setTransientStatus(appState, message) {
-  appState.transientStatus = message;
-}
-
-function clearTransientStatus(appState) {
-  appState.transientStatus = "";
-}
-
 function resetHighlightState(appState) {
   appState.recentPlayedNumbers = [];
   appState.highlightedRowIds = [];
@@ -775,9 +851,10 @@ function resetHighlightState(appState) {
 
 function resetGameUiState(appState) {
   appState.selectedCardNumber = null;
+  appState.pendingSubmit = false;
   appState.playLog = [];
   appState.summaryOpen = false;
-  clearTransientStatus(appState);
+  appState.transientStatus = "";
   resetHighlightState(appState);
 }
 
@@ -787,7 +864,7 @@ function buildLogEntry(state, step) {
     step.placement === "captured-full-row"
       ? `${playerName}이(가) 6번째 칸을 채워 벌점 ${step.penaltyPointsGained}점을 가져갔습니다.`
       : step.placement === "replaced-smallest"
-        ? `${playerName}이(가) 놓을 줄이 없어 가장 벌점이 낮은 줄을 가져갔습니다.`
+        ? `${playerName}이(가) 직접 고른 줄을 가져가고 새 카드로 교체했습니다.`
         : `${playerName}이(가) ${step.rowId}번 줄에 카드를 배치했습니다.`;
 
   return {
@@ -807,7 +884,6 @@ function applyStateDiff(appState, nextState) {
   const roundRestarted =
     !previousState ||
     previousState.round.number !== nextState.round.number ||
-    (previousState.round.turn !== nextState.round.turn && nextResolvedCount === 0) ||
     (previousState.round.phase === "finished" && nextState.round.phase !== "finished");
 
   if (roundRestarted) {
@@ -833,12 +909,11 @@ function applyStateDiff(appState, nextState) {
       appState.recentPlayedNumbers = [];
       appState.highlightedRowIds = [];
       appState.highlightTimerId = null;
-      const elements = getUiElements();
-      renderApp(appState, elements);
+      renderApp(appState, getUiElements());
     }, 850);
   }
 
-  if (!nextState.round.pendingResolution && nextState.round.phase !== "finished") {
+  if (!nextState.round.pendingResolution && !nextState.manualChoice && nextState.round.phase !== "finished") {
     appState.selectedCardNumber = null;
   }
 
@@ -847,16 +922,8 @@ function applyStateDiff(appState, nextState) {
   }
 }
 
-function withAck(socket, eventName, payload) {
-  return new Promise((resolve) => {
-    socket.emit(eventName, payload, (response) => {
-      resolve(response ?? { ok: false, error: "No response from server." });
-    });
-  });
-}
-
 async function handleCreateRoom(appState, elements, mode) {
-  const nickname = getNickname(elements);
+  const nickname = elements.nicknameInput.value.trim();
 
   if (!nickname) {
     appState.lobbyStatus = "닉네임을 먼저 입력하세요.";
@@ -864,13 +931,11 @@ async function handleCreateRoom(appState, elements, mode) {
     return;
   }
 
-  appState.lobbyStatus = mode === "ai" ? "AI 방을 생성 중입니다..." : "멀티플레이 방을 생성 중입니다...";
+  appState.lobbyStatus =
+    mode === "ai" ? "AI 방을 생성 중입니다..." : "멀티플레이 방을 생성 중입니다...";
   renderApp(appState, elements);
 
-  const response = await withAck(appState.socket, "createRoom", {
-    nickname,
-    mode,
-  });
+  const response = await withAck(appState.socket, "createRoom", { nickname, mode });
 
   if (!response.ok) {
     appState.lobbyStatus = response.error || "방 생성에 실패했습니다.";
@@ -889,8 +954,8 @@ async function handleCreateRoom(appState, elements, mode) {
 }
 
 async function handleJoinRoom(appState, elements) {
-  const nickname = getNickname(elements);
-  const roomCode = getRoomCode(elements);
+  const nickname = elements.nicknameInput.value.trim();
+  const roomCode = elements.roomCodeInput.value.trim().toUpperCase();
 
   if (!nickname) {
     appState.lobbyStatus = "닉네임을 먼저 입력하세요.";
@@ -907,10 +972,7 @@ async function handleJoinRoom(appState, elements) {
   appState.lobbyStatus = `${roomCode} 방에 참여 중입니다...`;
   renderApp(appState, elements);
 
-  const response = await withAck(appState.socket, "joinRoom", {
-    nickname,
-    roomCode,
-  });
+  const response = await withAck(appState.socket, "joinRoom", { nickname, roomCode });
 
   if (!response.ok) {
     appState.lobbyStatus = response.error || "방 참여에 실패했습니다.";
@@ -948,7 +1010,8 @@ async function handleSubmitCard(appState, elements) {
     return;
   }
 
-  setTransientStatus(appState, `${appState.selectedCardNumber}번 카드를 서버로 전송하는 중입니다.`);
+  appState.transientStatus = `${appState.selectedCardNumber}번 카드를 서버로 전송하는 중입니다.`;
+  appState.pendingSubmit = true;
   renderApp(appState, elements);
 
   const response = await withAck(appState.socket, "submitCard", {
@@ -957,12 +1020,37 @@ async function handleSubmitCard(appState, elements) {
   });
 
   if (!response.ok) {
-    setTransientStatus(appState, response.error || "카드 제출에 실패했습니다.");
+    appState.pendingSubmit = false;
+    appState.transientStatus = response.error || "카드 제출에 실패했습니다.";
     renderApp(appState, elements);
     return;
   }
 
-  clearTransientStatus(appState);
+  appState.pendingSubmit = false;
+  appState.transientStatus = "";
+  renderApp(appState, elements);
+}
+
+async function handleChooseRow(appState, elements, rowId) {
+  if (!appState.room?.roomCode || !appState.serverState?.manualChoice?.isChooser) {
+    return;
+  }
+
+  appState.transientStatus = `${rowId}번 줄을 선택하는 중입니다.`;
+  renderApp(appState, elements);
+
+  const response = await withAck(appState.socket, "chooseRow", {
+    roomCode: appState.room.roomCode,
+    rowId,
+  });
+
+  if (!response.ok) {
+    appState.transientStatus = response.error || "행 선택에 실패했습니다.";
+    renderApp(appState, elements);
+    return;
+  }
+
+  appState.transientStatus = "";
   renderApp(appState, elements);
 }
 
@@ -976,13 +1064,13 @@ async function handleRestartRound(appState, elements) {
   });
 
   if (!response.ok) {
-    setTransientStatus(appState, response.error || "라운드 재시작에 실패했습니다.");
+    appState.transientStatus = response.error || "라운드 재시작에 실패했습니다.";
     renderApp(appState, elements);
     return;
   }
 
   appState.summaryOpen = false;
-  clearTransientStatus(appState);
+  appState.transientStatus = "";
   renderApp(appState, elements);
 }
 
@@ -1044,7 +1132,33 @@ function initializeApp(socket) {
 
     applyStateDiff(appState, state);
     appState.serverState = state;
-    clearTransientStatus(appState);
+    appState.transientStatus = "";
+    appState.pendingSubmit = false;
+    rerender();
+  });
+
+  socket.on("submissionStatusUpdated", ({ roomCode, statuses }) => {
+    if (!appState.serverState) {
+      return;
+    }
+
+    if (roomCode && appState.room?.roomCode !== roomCode) {
+      return;
+    }
+
+    appState.serverState = {
+      ...appState.serverState,
+      submissionStatus: Array.isArray(statuses) ? statuses : [],
+    };
+    rerender();
+  });
+
+  socket.on("placementWarning", ({ roomCode, message }) => {
+    if (roomCode && appState.room?.roomCode !== roomCode) {
+      return;
+    }
+
+    appState.transientStatus = message || "그곳에는 놓을 수 없습니다!";
     rerender();
   });
 
@@ -1081,8 +1195,25 @@ function initializeApp(socket) {
 
     const cardNumber = Number(cardButton.dataset.cardNumber);
     appState.selectedCardNumber = appState.selectedCardNumber === cardNumber ? null : cardNumber;
-    clearTransientStatus(appState);
+    appState.transientStatus = "";
     rerender();
+  });
+
+  elements.boardRows.addEventListener("click", (event) => {
+    const rowElement = event.target.closest("[data-row-id]");
+
+    if (!rowElement || !appState.serverState?.manualChoice?.isChooser) {
+      return;
+    }
+
+    const rowId = Number(rowElement.dataset.rowId);
+    const allowed = appState.serverState.manualChoice.allowedRowIds ?? [];
+
+    if (!allowed.includes(rowId)) {
+      return;
+    }
+
+    handleChooseRow(appState, elements, rowId);
   });
 
   elements.submitButton.addEventListener("click", () => {

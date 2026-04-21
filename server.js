@@ -2,7 +2,12 @@ import express from "express";
 import cors from "cors";
 import { createServer } from "http";
 import { Server } from "socket.io";
-import { GameState, prepareRound, cloneCard } from "./js/gameLogic.js";
+import {
+  GameState,
+  prepareRound,
+  cloneCard,
+  findPlacementRowIndex,
+} from "./js/gameLogic.js";
 
 const app = express();
 const httpServer = createServer(app);
@@ -16,6 +21,7 @@ const io = new Server(httpServer, {
 const PORT = Number(process.env.PORT) || 3000;
 const MAX_PLAYERS_PER_ROOM = 4;
 const TURN_STEP_DELAY_MS = 900;
+const AI_PLACEMENT_DELAY_MS = 1500;
 const rooms = {};
 let nextPlayerId = 1;
 
@@ -66,6 +72,7 @@ function createRoom({ ownerPlayer, mode }) {
     players: [ownerPlayer],
     gameState: null,
     resolutionTimerId: null,
+    manualChoice: null,
   };
 
   rooms[code] = room;
@@ -91,6 +98,142 @@ function buildRoomSummary(room) {
   };
 }
 
+function sumPenalty(cards) {
+  return cards.reduce((total, card) => total + card.penalty, 0);
+}
+
+function chooseLowestPenaltyRowId(rows) {
+  let selectedRowId = rows[0]?.id ?? null;
+  let minimumPenalty = Number.POSITIVE_INFINITY;
+
+  for (const row of rows) {
+    const rowPenalty = sumPenalty(row.cards);
+
+    if (rowPenalty < minimumPenalty) {
+      minimumPenalty = rowPenalty;
+      selectedRowId = row.id;
+    }
+  }
+
+  return selectedRowId;
+}
+
+function isAiMode(room) {
+  return ["ai", "bot", "singleplayer"].includes(String(room.mode || "").toLowerCase());
+}
+
+function getCurrentPendingStep(room) {
+  const pendingResolution = room.gameState?.round?.pendingResolution;
+
+  if (!pendingResolution) {
+    return null;
+  }
+
+  return pendingResolution.steps[pendingResolution.currentStepIndex] ?? null;
+}
+
+function stepRequiresManualChoice(step) {
+  return Boolean(step);
+}
+
+function buildSubmissionStatus(room) {
+  if (!room.gameState) {
+    return room.players.map((player) => ({
+      playerId: player.id,
+      nickname: player.nickname,
+      isBot: player.isBot,
+      submitted: false,
+      waitingForPlacement: false,
+    }));
+  }
+
+  return room.players.map((player) => ({
+    playerId: player.id,
+    nickname: player.nickname,
+    isBot: player.isBot,
+    submitted: Boolean(room.gameState.round.selectedCardsByPlayer[player.id]),
+    waitingForPlacement: room.manualChoice?.playerId === player.id,
+  }));
+}
+
+function buildManualChoiceState(room, viewerPlayerId) {
+  if (!room.manualChoice) {
+    return null;
+  }
+
+  return {
+    playerId: room.manualChoice.playerId,
+    nickname: room.manualChoice.nickname,
+    card: cloneCard(room.manualChoice.card),
+    allowedRowIds: [...room.manualChoice.allowedRowIds],
+    recommendedRowId: room.manualChoice.recommendedRowId,
+    reason: room.manualChoice.reason,
+    prompt: room.manualChoice.prompt,
+    isChooser: room.manualChoice.playerId === viewerPlayerId,
+  };
+}
+
+function createManualChoice(room, step) {
+  const player = room.gameState.getPlayer(step.playerId);
+  const recommendedRowIndex = findPlacementRowIndex(room.gameState.rows, step.card);
+
+  return {
+    playerId: step.playerId,
+    nickname: player?.nickname ?? step.playerId,
+    card: cloneCard(step.card),
+    allowedRowIds:
+      recommendedRowIndex === -1
+        ? room.gameState.rows.map((row) => row.id)
+        : [room.gameState.rows[recommendedRowIndex].id],
+    recommendedRowId:
+      recommendedRowIndex >= 0 ? room.gameState.rows[recommendedRowIndex].id : null,
+    reason: recommendedRowIndex >= 0 ? "manual-placement" : "small-card-choice",
+    prompt: "카드를 배치할 행을 선택하세요.",
+  };
+}
+
+function chooseAiRowId(room, step) {
+  const recommendedRowIndex = findPlacementRowIndex(room.gameState.rows, step.card);
+
+  if (recommendedRowIndex >= 0) {
+    return room.gameState.rows[recommendedRowIndex].id;
+  }
+
+  return chooseLowestPenaltyRowId(room.gameState.rows);
+}
+
+function applyRowChoice(room, step, targetRowId) {
+  const targetRow = room.gameState.rows.find((row) => row.id === Number(targetRowId));
+
+  if (!targetRow) {
+    throw new Error("Selected row was not found.");
+  }
+
+  step.rowId = targetRow.id;
+
+  const hasNoNaturalPlacement =
+    findPlacementRowIndex(room.gameState.rows, step.card) === -1;
+  const targetRowIsFull = targetRow.cards.length >= 5;
+
+  if (hasNoNaturalPlacement) {
+    step.takenCards = targetRow.cards.map(cloneCard);
+    step.penaltyPointsGained = sumPenalty(step.takenCards);
+    step.placement = "replaced-smallest";
+    return;
+  }
+
+  if (targetRowIsFull) {
+    step.takenCards = targetRow.cards.map(cloneCard);
+    step.penaltyPointsGained = sumPenalty(step.takenCards);
+    step.placement = "captured-full-row";
+    return;
+  }
+
+  step.takenCards = [];
+  step.penaltyPointsGained = 0;
+  step.placement = "placed";
+}
+
 function sanitizeGameStateForPlayer(room, viewerPlayerId) {
   if (!room.gameState) {
     return null;
@@ -103,12 +246,21 @@ function sanitizeGameStateForPlayer(room, viewerPlayerId) {
     hand: player.id === viewerPlayerId ? player.hand.map(cloneCard) : [],
     handCount: room.gameState.getPlayer(player.id)?.hand.length ?? player.hand.length,
   }));
+  state.submissionStatus = buildSubmissionStatus(room);
+  state.manualChoice = buildManualChoiceState(room, viewerPlayerId);
 
   return state;
 }
 
 function emitRoomSummary(room) {
   io.to(room.code).emit("roomUpdated", buildRoomSummary(room));
+}
+
+function emitSubmissionStatus(room) {
+  io.to(room.code).emit("submissionStatusUpdated", {
+    roomCode: room.code,
+    statuses: buildSubmissionStatus(room),
+  });
 }
 
 function emitStateToRoom(room) {
@@ -122,6 +274,8 @@ function emitStateToRoom(room) {
       state: sanitizeGameStateForPlayer(room, player.id),
     });
   }
+
+  emitSubmissionStatus(room);
 }
 
 function getHumanPlayers(room) {
@@ -138,6 +292,7 @@ function createGameForRoom(room) {
     })),
   });
   prepareRound(room.gameState, 1);
+  room.manualChoice = null;
 }
 
 function maybeDeleteRoom(roomCode) {
@@ -173,21 +328,61 @@ function removePlayerFromRoom(room, socketId) {
     room.hostPlayerId = room.players[0].id;
   }
 
+  if (room.manualChoice?.playerId === removedPlayer.id) {
+    room.manualChoice = null;
+  }
+
   return removedPlayer;
 }
 
 function queueNextResolutionStep(room) {
   if (!room.gameState || !room.gameState.round.pendingResolution) {
     room.resolutionTimerId = null;
+    room.manualChoice = null;
     emitStateToRoom(room);
     return;
   }
 
-  room.resolutionTimerId = setTimeout(() => {
-    room.gameState.resolveNextPendingCard();
+  const currentStep = getCurrentPendingStep(room);
+  room.resolutionTimerId = null;
+
+  if (!stepRequiresManualChoice(currentStep)) {
+    room.manualChoice = null;
     emitStateToRoom(room);
-    queueNextResolutionStep(room);
-  }, TURN_STEP_DELAY_MS);
+    return;
+  }
+
+  const currentPlayer = room.gameState.getPlayer(currentStep.playerId);
+
+  if (isAiMode(room) && currentPlayer?.isBot) {
+    room.manualChoice = null;
+    emitStateToRoom(room);
+    room.resolutionTimerId = setTimeout(() => {
+      try {
+        const botStep = getCurrentPendingStep(room);
+
+        if (!botStep) {
+          room.resolutionTimerId = null;
+          emitStateToRoom(room);
+          return;
+        }
+
+        applyRowChoice(room, botStep, chooseAiRowId(room, botStep));
+        room.gameState.resolveNextPendingCard();
+        room.resolutionTimerId = null;
+        emitStateToRoom(room);
+        queueNextResolutionStep(room);
+      } catch (error) {
+        room.resolutionTimerId = null;
+        console.error("AI placement failed:", error);
+        emitStateToRoom(room);
+      }
+    }, AI_PLACEMENT_DELAY_MS);
+    return;
+  }
+
+  room.manualChoice = createManualChoice(room, currentStep);
+  emitStateToRoom(room);
 }
 
 function startResolutionIfReady(room) {
@@ -195,11 +390,6 @@ function startResolutionIfReady(room) {
     return;
   }
 
-  if (room.resolutionTimerId) {
-    return;
-  }
-
-  emitStateToRoom(room);
   queueNextResolutionStep(room);
 }
 
@@ -365,10 +555,10 @@ io.on("connection", (socket) => {
 
       const turnResult = room.gameState.playTurn(player.id, Number(cardNumber));
 
-      emitStateToRoom(room);
-
       if (turnResult.readyToResolve) {
         startResolutionIfReady(room);
+      } else {
+        emitStateToRoom(room);
       }
 
       callback({
@@ -407,9 +597,74 @@ io.on("connection", (socket) => {
         room.resolutionTimerId = null;
       }
 
+      room.manualChoice = null;
       prepareRound(room.gameState);
       emitStateToRoom(room);
       callback({ ok: true });
+    } catch (error) {
+      callback({
+        ok: false,
+        error: error.message,
+      });
+    }
+  });
+
+  socket.on("chooseRow", ({ roomCode, rowId } = {}, callback = () => {}) => {
+    try {
+      const normalizedRoomCode = String(roomCode || "").trim().toUpperCase();
+      const room = rooms[normalizedRoomCode];
+
+      if (!room || !room.gameState) {
+        throw new Error("Active game room not found.");
+      }
+
+      if (!room.manualChoice) {
+        throw new Error("There is no row choice pending.");
+      }
+
+      const player = room.players.find((currentPlayer) => currentPlayer.socketId === socket.id);
+
+      if (!player) {
+        throw new Error("You are not a member of this room.");
+      }
+
+      if (player.id !== room.manualChoice.playerId) {
+        throw new Error("It is not your turn to choose a row.");
+      }
+
+      const currentStep = getCurrentPendingStep(room);
+
+      if (!stepRequiresManualChoice(currentStep)) {
+        throw new Error("The current card does not require a manual row choice.");
+      }
+
+      const selectedRowId = Number(rowId);
+      const allowedRowIds = room.manualChoice.allowedRowIds ?? [];
+
+      if (!allowedRowIds.includes(selectedRowId)) {
+        socket.emit("placementWarning", {
+          message: "그곳에는 놓을 수 없습니다!",
+          roomCode: room.code,
+        });
+        callback({
+          ok: false,
+          error: "That row is not valid for this card.",
+        });
+        return;
+      }
+
+      applyRowChoice(room, currentStep, selectedRowId);
+      room.manualChoice = null;
+
+      const stepResult = room.gameState.resolveNextPendingCard();
+      emitStateToRoom(room);
+      queueNextResolutionStep(room);
+
+      callback({
+        ok: true,
+        finishedTurn: stepResult.finishedTurn,
+        roundEnded: stepResult.roundEnded,
+      });
     } catch (error) {
       callback({
         ok: false,
