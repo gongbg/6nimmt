@@ -102,6 +102,14 @@ function sumPenalty(cards) {
   return cards.reduce((total, card) => total + card.penalty, 0);
 }
 
+function createHiddenCard() {
+  return {
+    number: null,
+    penalty: null,
+    hidden: true,
+  };
+}
+
 function chooseLowestPenaltyRowId(rows) {
   let selectedRowId = rows[0]?.id ?? null;
   let minimumPenalty = Number.POSITIVE_INFINITY;
@@ -161,15 +169,17 @@ function buildManualChoiceState(room, viewerPlayerId) {
     return null;
   }
 
+  const isChooser = room.manualChoice.playerId === viewerPlayerId;
+
   return {
     playerId: room.manualChoice.playerId,
     nickname: room.manualChoice.nickname,
-    card: cloneCard(room.manualChoice.card),
-    allowedRowIds: [...room.manualChoice.allowedRowIds],
-    recommendedRowId: room.manualChoice.recommendedRowId,
+    card: isChooser ? cloneCard(room.manualChoice.card) : createHiddenCard(),
+    allowedRowIds: isChooser ? [...room.manualChoice.allowedRowIds] : [],
+    recommendedRowId: isChooser ? room.manualChoice.recommendedRowId : null,
     reason: room.manualChoice.reason,
     prompt: room.manualChoice.prompt,
-    isChooser: room.manualChoice.playerId === viewerPlayerId,
+    isChooser,
   };
 }
 
@@ -246,6 +256,47 @@ function sanitizeGameStateForPlayer(room, viewerPlayerId) {
     hand: player.id === viewerPlayerId ? player.hand.map(cloneCard) : [],
     handCount: room.gameState.getPlayer(player.id)?.hand.length ?? player.hand.length,
   }));
+  state.round.selectedCardsByPlayer = Object.fromEntries(
+    Object.entries(state.round.selectedCardsByPlayer).map(([playerId, card]) => [
+      playerId,
+      cloneCard(card),
+    ])
+  );
+
+  if (state.round.pendingResolution) {
+    const { currentStepIndex } = state.round.pendingResolution;
+
+    state.round.pendingResolution.revealedCards = state.round.pendingResolution.revealedCards.map(
+      (entry, index) => ({
+        playerId: entry.playerId,
+        card:
+          entry.playerId === viewerPlayerId || index < currentStepIndex
+            ? cloneCard(entry.card)
+            : createHiddenCard(),
+      })
+    );
+    state.round.pendingResolution.orderedCards = state.round.pendingResolution.orderedCards.map(
+      (entry, index) => ({
+        playerId: entry.playerId,
+        card:
+          entry.playerId === viewerPlayerId || index < currentStepIndex
+            ? cloneCard(entry.card)
+            : createHiddenCard(),
+      })
+    );
+    state.round.pendingResolution.steps = state.round.pendingResolution.steps.map((step, index) => ({
+      ...step,
+      card:
+        step.playerId === viewerPlayerId || index < currentStepIndex
+          ? cloneCard(step.card)
+          : createHiddenCard(),
+      rowId: index < currentStepIndex ? step.rowId : null,
+      takenCards: index < currentStepIndex ? step.takenCards : [],
+      penaltyPointsGained: index < currentStepIndex ? step.penaltyPointsGained : 0,
+      placement: index < currentStepIndex ? step.placement : "pending",
+    }));
+  }
+
   state.submissionStatus = buildSubmissionStatus(room);
   state.manualChoice = buildManualChoiceState(room, viewerPlayerId);
 

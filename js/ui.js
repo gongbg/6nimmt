@@ -175,6 +175,21 @@ function createHandCard(card, options = {}) {
   return cardElement;
 }
 
+function createHiddenPendingCard() {
+  const cardElement = createUiElement(
+    "div",
+    "reveal-card w-11 h-14 sm:w-12 sm:h-16 rounded-xl border border-outline-variant/20 bg-gradient-to-b from-surface-container-highest to-surface-container-lowest shadow-[0_10px_28px_-8px_rgba(0,0,0,0.45)] relative flex items-center justify-center"
+  );
+  cardElement.appendChild(
+    createUiElement(
+      "span",
+      "font-headline text-xl sm:text-2xl font-black text-primary/75",
+      "?"
+    )
+  );
+  return cardElement;
+}
+
 function createEmptySlot(isNextSlot) {
   if (isNextSlot) {
     const slot = createUiElement(
@@ -529,13 +544,26 @@ function renderCurrentTurnCards(state, elements) {
         .join(" ")
     );
 
+    const cardElement =
+      entry.card?.hidden || entry.card?.number === null
+        ? createHiddenPendingCard()
+        : createHandCard(entry.card, {
+            compact: true,
+            disabled: true,
+            highlighted: isActive,
+            dimmed: isResolved,
+          });
+
+    if (isActive) {
+      cardElement.classList.add("ring-2", "ring-primary/70");
+    }
+
+    if (isResolved) {
+      cardElement.classList.add("opacity-45");
+    }
+
     item.append(
-      createHandCard(entry.card, {
-        compact: true,
-        disabled: true,
-        highlighted: isActive,
-        dimmed: isResolved,
-      }),
+      cardElement,
       createUiElement(
         "div",
         "text-xs font-bold tracking-wide text-on-surface-variant",
@@ -598,10 +626,10 @@ function renderSubmissionStatus(state, elements) {
         ? "border-secondary/25 bg-secondary/10 text-secondary"
         : "border-outline-variant/20 bg-surface-container-lowest text-on-surface-variant";
     const badgeText = entry.waitingForPlacement
-      ? "행 선택중..."
+      ? "✅ 제출완료"
       : entry.submitted
-        ? "제출완료!"
-        : "고민중...";
+        ? "✅ 제출완료"
+        : "🤔 고민중..";
     const row = createUiElement(
       "div",
       "rounded-2xl border border-outline-variant/15 bg-surface-container-lowest/65 px-3 py-3 flex items-center justify-between gap-3"
@@ -634,10 +662,10 @@ function buildStatusMessage(state, appState) {
 
   if (state.manualChoice) {
     if (state.manualChoice.isChooser) {
-      return "카드를 배치할 행을 선택하세요!";
+      return "내 턴입니다! 어디에 놓을지 선택하세요";
     }
 
-    return `${state.manualChoice.nickname}님이 카드를 배치 중입니다.`;
+    return `현재 ${state.manualChoice.nickname}님의 턴입니다!`;
   }
 
   const currentPlayer = getCurrentPlayer(state, appState.playerId);
@@ -650,7 +678,7 @@ function buildStatusMessage(state, appState) {
     const currentStep = state.round.pendingResolution.steps[state.round.pendingResolution.currentStepIndex];
 
     if (currentStep) {
-      return `${getPlayerName(state, currentStep.playerId)}님의 배치를 기다리는 중입니다.`;
+      return `현재 ${getPlayerName(state, currentStep.playerId)}님의 턴입니다!`;
     }
 
     return "제출된 카드를 정리하고 있습니다.";
