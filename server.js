@@ -22,6 +22,16 @@ const PORT = Number(process.env.PORT) || 3000;
 const MAX_PLAYERS_PER_ROOM = 4;
 const TURN_STEP_DELAY_MS = 900;
 const AI_PLACEMENT_DELAY_MS = 1500;
+const AVATAR_SKIN_COLORS = [
+  "#ffb59f",
+  "#f4c27b",
+  "#8fd3ff",
+  "#b8f18a",
+  "#ffd166",
+  "#f6a6ff",
+];
+const AVATAR_EYE_TYPES = ["dot", "smile", "sleepy", "spark"];
+const AVATAR_MOUTH_TYPES = ["smile", "grin", "o", "flat"];
 const rooms = {};
 let nextPlayerId = 1;
 
@@ -51,8 +61,43 @@ function createRoomCode() {
   return code;
 }
 
+function createDefaultAvatar(seedValue) {
+  const seed = Math.abs(Number(seedValue) || 0);
+
+  return {
+    skinColor: AVATAR_SKIN_COLORS[seed % AVATAR_SKIN_COLORS.length],
+    eyeType: AVATAR_EYE_TYPES[seed % AVATAR_EYE_TYPES.length],
+    mouthType: AVATAR_MOUTH_TYPES[seed % AVATAR_MOUTH_TYPES.length],
+  };
+}
+
+function normalizeAvatarInput(avatar, fallbackSeed) {
+  const fallbackAvatar = createDefaultAvatar(fallbackSeed);
+
+  if (!avatar || typeof avatar !== "object") {
+    return fallbackAvatar;
+  }
+
+  const skinColor = AVATAR_SKIN_COLORS.includes(avatar.skinColor)
+    ? avatar.skinColor
+    : fallbackAvatar.skinColor;
+  const eyeType = AVATAR_EYE_TYPES.includes(avatar.eyeType)
+    ? avatar.eyeType
+    : fallbackAvatar.eyeType;
+  const mouthType = AVATAR_MOUTH_TYPES.includes(avatar.mouthType)
+    ? avatar.mouthType
+    : fallbackAvatar.mouthType;
+
+  return {
+    skinColor,
+    eyeType,
+    mouthType,
+  };
+}
+
 function createPlayer({ socketId = null, nickname, isBot = false }) {
   const id = isBot ? `bot-${nextPlayerId}` : `player-${nextPlayerId}`;
+  const avatarSeed = nextPlayerId;
   nextPlayerId += 1;
 
   return {
@@ -60,6 +105,7 @@ function createPlayer({ socketId = null, nickname, isBot = false }) {
     socketId,
     nickname,
     isBot,
+    avatar: isBot ? null : normalizeAvatarInput(null, avatarSeed),
   };
 }
 
@@ -84,6 +130,7 @@ function getRoomPlayersForState(room) {
     id: player.id,
     nickname: player.nickname,
     isBot: player.isBot,
+    avatar: player.avatar ? { ...player.avatar } : null,
   }));
 }
 
@@ -340,6 +387,7 @@ function createGameForRoom(room) {
       id: player.id,
       nickname: player.nickname,
       isBot: player.isBot,
+      avatar: player.avatar ? { ...player.avatar } : null,
     })),
   });
   prepareRound(room.gameState, 1);
@@ -384,6 +432,20 @@ function removePlayerFromRoom(room, socketId) {
   }
 
   return removedPlayer;
+}
+
+function syncPlayerAvatar(room, playerId, avatar) {
+  const roomPlayer = room.players.find((player) => player.id === playerId);
+
+  if (roomPlayer) {
+    roomPlayer.avatar = { ...avatar };
+  }
+
+  const statePlayer = room.gameState?.getPlayer(playerId);
+
+  if (statePlayer) {
+    statePlayer.avatar = { ...avatar };
+  }
 }
 
 function queueNextResolutionStep(room) {
@@ -531,6 +593,46 @@ io.on("connection", (socket) => {
         roomCode: room.code,
         playerId: player.id,
         room: buildRoomSummary(room),
+      });
+    } catch (error) {
+      callback({
+        ok: false,
+        error: error.message,
+      });
+    }
+  });
+
+  socket.on("updateAvatar", ({ roomCode, avatar } = {}, callback = () => {}) => {
+    try {
+      const normalizedRoomCode = String(roomCode || "").trim().toUpperCase();
+      const room = rooms[normalizedRoomCode];
+
+      if (!room) {
+        throw new Error("Room not found.");
+      }
+
+      if (isAiMode(room)) {
+        throw new Error("Avatar editing is only available in multiplayer mode.");
+      }
+
+      const player = room.players.find((currentPlayer) => currentPlayer.socketId === socket.id);
+
+      if (!player) {
+        throw new Error("You are not a member of this room.");
+      }
+
+      if (player.isBot) {
+        throw new Error("Bots cannot edit avatars.");
+      }
+
+      const normalizedAvatar = normalizeAvatarInput(avatar, player.id.length);
+      syncPlayerAvatar(room, player.id, normalizedAvatar);
+
+      emitRoomSummary(room);
+      emitStateToRoom(room);
+      callback({
+        ok: true,
+        avatar: normalizedAvatar,
       });
     } catch (error) {
       callback({

@@ -13,6 +13,22 @@ const UI_BOT_PROFILES = [
   },
 ];
 
+const AVATAR_SKIN_COLORS = [
+  "#ffb59f",
+  "#f4c27b",
+  "#8fd3ff",
+  "#b8f18a",
+  "#ffd166",
+  "#f6a6ff",
+];
+const AVATAR_EYE_TYPES = ["dot", "smile", "sleepy", "spark"];
+const AVATAR_MOUTH_TYPES = ["smile", "grin", "o", "flat"];
+const DEFAULT_AVATAR = {
+  skinColor: AVATAR_SKIN_COLORS[0],
+  eyeType: AVATAR_EYE_TYPES[0],
+  mouthType: AVATAR_MOUTH_TYPES[0],
+};
+
 const BULL_HEAD_SVG = `
   <svg viewBox="0 0 64 64" aria-hidden="true" class="bull-icon" fill="currentColor">
     <path d="M15 12c-5 2-8 7-8 12 0 4 2 7 5 9 2-4 4-7 8-8-1-4-3-8-5-13Zm34 0c-2 5-4 9-5 13 4 1 6 4 8 8 3-2 5-5 5-9 0-5-3-10-8-12Z"></path>
@@ -32,6 +48,87 @@ function createUiElement(tagName, className = "", textContent = "") {
   }
 
   return element;
+}
+
+function normalizeAvatar(avatar) {
+  return {
+    skinColor: AVATAR_SKIN_COLORS.includes(avatar?.skinColor)
+      ? avatar.skinColor
+      : DEFAULT_AVATAR.skinColor,
+    eyeType: AVATAR_EYE_TYPES.includes(avatar?.eyeType)
+      ? avatar.eyeType
+      : DEFAULT_AVATAR.eyeType,
+    mouthType: AVATAR_MOUTH_TYPES.includes(avatar?.mouthType)
+      ? avatar.mouthType
+      : DEFAULT_AVATAR.mouthType,
+  };
+}
+
+function getAvatarMarkup(avatar) {
+  const normalizedAvatar = normalizeAvatar(avatar);
+  const eyeMarkupByType = {
+    dot: `
+      <circle cx="24" cy="28" r="2.8" fill="#17311c"></circle>
+      <circle cx="40" cy="28" r="2.8" fill="#17311c"></circle>
+    `,
+    smile: `
+      <path d="M20 29c2.5-3 5-3 8 0" stroke="#17311c" stroke-width="2.5" stroke-linecap="round" fill="none"></path>
+      <path d="M36 29c2.5-3 5-3 8 0" stroke="#17311c" stroke-width="2.5" stroke-linecap="round" fill="none"></path>
+    `,
+    sleepy: `
+      <path d="M20 28h8" stroke="#17311c" stroke-width="2.5" stroke-linecap="round"></path>
+      <path d="M36 28h8" stroke="#17311c" stroke-width="2.5" stroke-linecap="round"></path>
+    `,
+    spark: `
+      <path d="M24 24l1.2 2.6 2.8.4-2 2 0.5 2.8-2.5-1.4-2.5 1.4.5-2.8-2-2 2.8-.4L24 24Z" fill="#17311c"></path>
+      <path d="M40 24l1.2 2.6 2.8.4-2 2 0.5 2.8-2.5-1.4-2.5 1.4.5-2.8-2-2 2.8-.4L40 24Z" fill="#17311c"></path>
+    `,
+  };
+  const mouthMarkupByType = {
+    smile: `<path d="M24 41c3 4 13 4 16 0" stroke="#7f260d" stroke-width="3" stroke-linecap="round" fill="none"></path>`,
+    grin: `
+      <rect x="23" y="38" width="18" height="7" rx="3.5" fill="#fff7f3"></rect>
+      <path d="M23 41.5h18" stroke="#7f260d" stroke-width="1.6"></path>
+    `,
+    o: `<ellipse cx="32" cy="41" rx="4.2" ry="5.2" fill="#7f260d"></ellipse>`,
+    flat: `<path d="M25 42h14" stroke="#7f260d" stroke-width="3" stroke-linecap="round"></path>`,
+  };
+
+  return `
+    <svg viewBox="0 0 64 64" aria-hidden="true">
+      <defs>
+        <linearGradient id="avatarBg" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="${normalizedAvatar.skinColor}"></stop>
+          <stop offset="100%" stop-color="rgba(255,255,255,0.92)"></stop>
+        </linearGradient>
+      </defs>
+      <rect x="2" y="2" width="60" height="60" rx="20" fill="url(#avatarBg)"></rect>
+      <circle cx="32" cy="35" r="18" fill="${normalizedAvatar.skinColor}" opacity="0.95"></circle>
+      <path d="M18 23c3-8 10-13 14-13 5 0 12 5 14 13-2-2-5-3-7-3-3 0-4 1-7 1s-4-1-7-1c-2 0-5 1-7 3Z" fill="#17311c" opacity="0.85"></path>
+      ${eyeMarkupByType[normalizedAvatar.eyeType]}
+      ${mouthMarkupByType[normalizedAvatar.mouthType]}
+    </svg>
+  `;
+}
+
+function createAvatarElement(avatar, options = {}) {
+  const { sizeClass = "h-10 w-10", editable = false } = options;
+  const wrapper = createUiElement(
+    "div",
+    ["avatar-shell", sizeClass, editable ? "avatar-editable" : ""].filter(Boolean).join(" ")
+  );
+  wrapper.innerHTML = getAvatarMarkup(avatar);
+  return wrapper;
+}
+
+function createBotAvatarElement(index, sizeClass = "h-10 w-10") {
+  const wrapper = createUiElement("div", `avatar-shell ${sizeClass}`);
+  const img = document.createElement("img");
+  img.alt = "Bot avatar";
+  img.className = "h-full w-full object-cover";
+  img.src = UI_BOT_PROFILES[index % UI_BOT_PROFILES.length].avatar;
+  wrapper.appendChild(img);
+  return wrapper;
 }
 
 function createBullIcon(className = "") {
@@ -258,6 +355,10 @@ function createAppState(socket) {
     highlightedRowIds: [],
     summaryOpen: false,
     highlightTimerId: null,
+    processedLogIds: new Set(),
+    avatarEditorOpen: false,
+    avatarDraft: normalizeAvatar(DEFAULT_AVATAR),
+    avatarSaving: false,
   };
 }
 
@@ -280,6 +381,9 @@ function getUiElements() {
     roomStatusMessage: document.getElementById("room-status-message"),
     startGameButton: document.getElementById("start-game-button"),
     leaveRoomButton: document.getElementById("leave-room-button"),
+    selfProfileButton: document.getElementById("self-profile-button"),
+    selfProfileAvatar: document.getElementById("self-profile-avatar"),
+    selfProfileName: document.getElementById("self-profile-name"),
     opponentSlots: Array.from(document.querySelectorAll("[data-opponent-slot]")),
     boardRows: document.getElementById("board-rows"),
     playerHand: document.getElementById("player-hand"),
@@ -299,6 +403,15 @@ function getUiElements() {
     closeSummaryButton: document.getElementById("close-summary-button"),
     dismissSummaryButton: document.getElementById("dismiss-summary-button"),
     restartFromModalButton: document.getElementById("restart-from-modal-button"),
+    avatarEditorModal: document.getElementById("avatar-editor-modal"),
+    closeAvatarEditorButton: document.getElementById("close-avatar-editor-button"),
+    cancelAvatarEditorButton: document.getElementById("cancel-avatar-editor-button"),
+    saveAvatarButton: document.getElementById("save-avatar-button"),
+    avatarPreview: document.getElementById("avatar-preview"),
+    avatarEditorStatus: document.getElementById("avatar-editor-status"),
+    avatarSkinOptions: document.getElementById("avatar-skin-options"),
+    avatarEyeOptions: document.getElementById("avatar-eye-options"),
+    avatarMouthOptions: document.getElementById("avatar-mouth-options"),
     staticBullIcons: Array.from(document.querySelectorAll("[data-static-bull-icon]")),
   };
 }
@@ -334,6 +447,22 @@ function getPlayerName(state, playerId) {
   return state?.players?.find((player) => player.id === playerId)?.nickname ?? playerId;
 }
 
+function getCurrentRoomMode(appState) {
+  return appState.serverState?.mode ?? appState.room?.mode ?? "multiplayer";
+}
+
+function canEditAvatar(appState) {
+  return Boolean(appState.playerId) && getCurrentRoomMode(appState) !== "ai";
+}
+
+function getEditablePlayerSource(appState) {
+  return (
+    appState.serverState?.players?.find((player) => player.id === appState.playerId) ??
+    appState.room?.players?.find((player) => player.id === appState.playerId) ??
+    null
+  );
+}
+
 function withAck(socket, eventName, payload) {
   return new Promise((resolve) => {
     socket.emit(eventName, payload, (response) => {
@@ -365,21 +494,23 @@ function renderLobby(appState, elements) {
   elements.lobbyStatus.textContent = appState.lobbyStatus;
 }
 
-function createRoomPlayerBadge(player, isHost, isSelf) {
+function createRoomPlayerBadge(player, isHost, isSelf, canEdit) {
   const card = createUiElement(
-    "div",
-    "rounded-[1.25rem] border border-outline-variant/15 bg-surface-container-lowest/70 px-4 py-4 flex items-center justify-between gap-4"
+    isSelf && canEdit ? "button" : "div",
+    [
+      "rounded-[1.25rem] border border-outline-variant/15 bg-surface-container-lowest/70 px-4 py-4 flex items-center justify-between gap-4",
+      isSelf && canEdit ? "transition-transform active:scale-[0.98]" : "",
+    ]
+      .filter(Boolean)
+      .join(" ")
   );
   const left = createUiElement("div", "flex items-center gap-3");
-  const avatar = createUiElement(
-    "div",
-    player.isBot
-      ? "flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/15 text-primary"
-      : "flex h-11 w-11 items-center justify-center rounded-2xl bg-secondary-container/25 text-secondary"
-  );
-  avatar.appendChild(
-    createUiElement("span", "material-symbols-outlined", player.isBot ? "smart_toy" : "person")
-  );
+  const avatar = player.isBot
+    ? createBotAvatarElement(player.nickname.length, "h-11 w-11")
+    : createAvatarElement(player.avatar, {
+        sizeClass: "h-11 w-11",
+        editable: isSelf && canEdit,
+      });
   const textWrap = createUiElement("div");
   textWrap.append(
     createUiElement(
@@ -396,6 +527,11 @@ function createRoomPlayerBadge(player, isHost, isSelf) {
 
   left.append(avatar, textWrap);
   card.appendChild(left);
+
+  if (card.tagName === "BUTTON") {
+    card.type = "button";
+    card.dataset.editAvatarTrigger = "true";
+  }
 
   if (isHost) {
     card.appendChild(
@@ -429,7 +565,12 @@ function renderRoom(appState, elements) {
 
   room.players.forEach((player) => {
     elements.roomPlayerList.appendChild(
-      createRoomPlayerBadge(player, player.id === room.hostPlayerId, player.id === appState.playerId)
+      createRoomPlayerBadge(
+        player,
+        player.id === room.hostPlayerId,
+        player.id === appState.playerId,
+        canEditAvatar(appState)
+      )
     );
   });
 
@@ -447,7 +588,7 @@ function renderOpponentHud(state, appState, elements) {
     const name = slot.querySelector("[data-opponent-name]");
     const hand = slot.querySelector("[data-opponent-hand]");
     const penalty = slot.querySelector("[data-opponent-penalty]");
-    const image = slot.querySelector("img");
+    const avatarTarget = slot.querySelector("[data-opponent-avatar]");
 
     if (!player) {
       slot.style.display = "none";
@@ -459,10 +600,13 @@ function renderOpponentHud(state, appState, elements) {
     hand.textContent = String(player.handCount ?? player.hand?.length ?? 0);
     penalty.textContent = String(getDisplayPenaltyPoints(player, state.round));
 
-    if (image) {
-      const avatarIndex = player.isBot ? index : (index + 1) % UI_BOT_PROFILES.length;
-      image.src = UI_BOT_PROFILES[avatarIndex].avatar;
-      image.alt = `${player.nickname} avatar`;
+    if (avatarTarget) {
+      avatarTarget.innerHTML = "";
+      avatarTarget.appendChild(
+        player.isBot
+          ? createBotAvatarElement(index, "h-10 w-10")
+          : createAvatarElement(player.avatar, { sizeClass: "h-10 w-10" })
+      );
     }
   });
 }
@@ -626,10 +770,10 @@ function renderSubmissionStatus(state, elements) {
         ? "border-secondary/25 bg-secondary/10 text-secondary"
         : "border-outline-variant/20 bg-surface-container-lowest text-on-surface-variant";
     const badgeText = entry.waitingForPlacement
-      ? "✅ 제출완료"
+      ? "🐮 제출완료 🐮"
       : entry.submitted
-        ? "✅ 제출완료"
-        : "🤔 고민중..";
+        ? "🐮 제출완료 🐮"
+        : "🐮 고민중 🐮";
     const row = createUiElement(
       "div",
       "rounded-2xl border border-outline-variant/15 bg-surface-container-lowest/65 px-3 py-3 flex items-center justify-between gap-3"
@@ -736,6 +880,128 @@ function renderStatus(state, appState, elements) {
     Boolean(state.manualChoice);
 }
 
+function renderSelfProfile(appState, elements) {
+  if (!elements.selfProfileButton || !elements.selfProfileAvatar || !elements.selfProfileName) {
+    return;
+  }
+
+  const player = getEditablePlayerSource(appState);
+  elements.selfProfileAvatar.innerHTML = "";
+  elements.selfProfileName.textContent = player?.nickname ?? "Player";
+  elements.selfProfileButton.disabled = !player || !canEditAvatar(appState);
+  elements.selfProfileButton.title = canEditAvatar(appState)
+    ? "프로필을 클릭해 아바타를 편집하세요."
+    : "AI 모드에서는 아바타 편집이 비활성화됩니다.";
+
+  if (!player) {
+    return;
+  }
+
+  elements.selfProfileAvatar.appendChild(
+    createAvatarElement(player.avatar, {
+      sizeClass: "h-11 w-11",
+      editable: canEditAvatar(appState),
+    })
+  );
+}
+
+function createAvatarOptionButton(label, selected, datasetKey, datasetValue) {
+  const button = createUiElement(
+    "button",
+    [
+      "avatar-editor-chip rounded-2xl border border-outline-variant/20 bg-surface-container-lowest px-4 py-3 text-sm font-bold text-on-surface",
+      selected ? "is-selected" : "",
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+  button.type = "button";
+  button.dataset.avatarOption = datasetKey;
+  button.dataset.avatarValue = datasetValue;
+  button.textContent = label;
+  return button;
+}
+
+function renderAvatarEditor(appState, elements) {
+  if (!elements.avatarEditorModal) {
+    return;
+  }
+
+  if (appState.avatarEditorOpen) {
+    elements.avatarEditorModal.classList.remove("hidden");
+    elements.avatarEditorModal.classList.add("flex");
+  } else {
+    elements.avatarEditorModal.classList.add("hidden");
+    elements.avatarEditorModal.classList.remove("flex");
+  }
+
+  if (!elements.avatarPreview) {
+    return;
+  }
+
+  elements.avatarPreview.innerHTML = "";
+  elements.avatarPreview.appendChild(createAvatarElement(appState.avatarDraft, { sizeClass: "h-28 w-28" }));
+  elements.avatarEditorStatus.textContent = appState.avatarSaving
+    ? "저장 중입니다..."
+    : "수정 중에는 이 미리보기에서 바로 확인할 수 있습니다.";
+
+  elements.avatarSkinOptions.innerHTML = "";
+  AVATAR_SKIN_COLORS.forEach((color) => {
+    const button = createUiElement(
+      "button",
+      [
+        "avatar-editor-chip rounded-full border border-outline-variant/20 h-11 w-11",
+        appState.avatarDraft.skinColor === color ? "is-selected" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")
+    );
+    button.type = "button";
+    button.dataset.avatarOption = "skinColor";
+    button.dataset.avatarValue = color;
+    button.style.background = color;
+    elements.avatarSkinOptions.appendChild(button);
+  });
+
+  const eyeLabels = {
+    dot: "점눈",
+    smile: "웃는 눈",
+    sleepy: "졸린 눈",
+    spark: "반짝 눈",
+  };
+  elements.avatarEyeOptions.innerHTML = "";
+  AVATAR_EYE_TYPES.forEach((eyeType) => {
+    elements.avatarEyeOptions.appendChild(
+      createAvatarOptionButton(
+        eyeLabels[eyeType],
+        appState.avatarDraft.eyeType === eyeType,
+        "eyeType",
+        eyeType
+      )
+    );
+  });
+
+  const mouthLabels = {
+    smile: "스마일",
+    grin: "활짝",
+    o: "동그라미",
+    flat: "덤덤",
+  };
+  elements.avatarMouthOptions.innerHTML = "";
+  AVATAR_MOUTH_TYPES.forEach((mouthType) => {
+    elements.avatarMouthOptions.appendChild(
+      createAvatarOptionButton(
+        mouthLabels[mouthType],
+        appState.avatarDraft.mouthType === mouthType,
+        "mouthType",
+        mouthType
+      )
+    );
+  });
+
+  elements.saveAvatarButton.disabled = appState.avatarSaving;
+}
+
 function renderPlayLog(appState, elements) {
   elements.playLog.innerHTML = "";
 
@@ -840,6 +1106,7 @@ function renderGame(state, appState, elements) {
   renderCurrentTurnCards(state, elements);
   renderPlayerHand(state, appState, elements);
   renderStatus(state, appState, elements);
+  renderSelfProfile(appState, elements);
   renderSubmissionStatus(state, elements);
   renderPlayLog(appState, elements);
   renderRoundSummary(state, appState, elements);
@@ -858,6 +1125,7 @@ function renderApp(appState, elements) {
 
   renderLobby(appState, elements);
   renderRoom(appState, elements);
+  renderAvatarEditor(appState, elements);
 
   if (showGame && appState.serverState) {
     renderGame(appState.serverState, appState, elements);
@@ -881,6 +1149,7 @@ function resetGameUiState(appState) {
   appState.selectedCardNumber = null;
   appState.pendingSubmit = false;
   appState.playLog = [];
+  appState.processedLogIds = new Set();
   appState.summaryOpen = false;
   appState.transientStatus = "";
   resetHighlightState(appState);
@@ -920,25 +1189,37 @@ function applyStateDiff(appState, nextState) {
 
   if (nextResolvedCount > previousResolvedCount) {
     const newSteps = nextResolvedCards.slice(previousResolvedCount);
+    const freshSteps = [];
 
     newSteps.forEach((step) => {
-      appState.playLog = [buildLogEntry(nextState, step), ...appState.playLog].slice(0, 16);
+      const entry = buildLogEntry(nextState, step);
+
+      if (appState.processedLogIds.has(entry.id)) {
+        return;
+      }
+
+      appState.processedLogIds.add(entry.id);
+      appState.playLog = [entry, ...appState.playLog].slice(0, 16);
+      freshSteps.push(step);
     });
 
-    const latestStep = newSteps[newSteps.length - 1];
-    appState.recentPlayedNumbers = [latestStep.card.number];
-    appState.highlightedRowIds = latestStep.penaltyPointsGained > 0 ? [latestStep.rowId] : [];
+    if (freshSteps.length) {
+      const latestStep = freshSteps[freshSteps.length - 1];
 
-    if (appState.highlightTimerId) {
-      window.clearTimeout(appState.highlightTimerId);
+      appState.recentPlayedNumbers = [latestStep.card.number];
+      appState.highlightedRowIds = latestStep.penaltyPointsGained > 0 ? [latestStep.rowId] : [];
+
+      if (appState.highlightTimerId) {
+        window.clearTimeout(appState.highlightTimerId);
+      }
+
+      appState.highlightTimerId = window.setTimeout(() => {
+        appState.recentPlayedNumbers = [];
+        appState.highlightedRowIds = [];
+        appState.highlightTimerId = null;
+        renderApp(appState, getUiElements());
+      }, 850);
     }
-
-    appState.highlightTimerId = window.setTimeout(() => {
-      appState.recentPlayedNumbers = [];
-      appState.highlightedRowIds = [];
-      appState.highlightTimerId = null;
-      renderApp(appState, getUiElements());
-    }, 850);
   }
 
   if (!nextState.round.pendingResolution && !nextState.manualChoice && nextState.round.phase !== "finished") {
@@ -1102,6 +1383,54 @@ async function handleRestartRound(appState, elements) {
   renderApp(appState, elements);
 }
 
+function openAvatarEditor(appState, elements) {
+  if (!canEditAvatar(appState)) {
+    return;
+  }
+
+  const player = getEditablePlayerSource(appState);
+
+  if (!player) {
+    return;
+  }
+
+  appState.avatarDraft = normalizeAvatar(player.avatar);
+  appState.avatarEditorOpen = true;
+  renderApp(appState, elements);
+}
+
+function closeAvatarEditor(appState, elements) {
+  appState.avatarEditorOpen = false;
+  appState.avatarSaving = false;
+  renderApp(appState, elements);
+}
+
+async function handleSaveAvatar(appState, elements) {
+  if (!appState.room?.roomCode || !canEditAvatar(appState)) {
+    return;
+  }
+
+  appState.avatarSaving = true;
+  renderApp(appState, elements);
+
+  const response = await withAck(appState.socket, "updateAvatar", {
+    roomCode: appState.room.roomCode,
+    avatar: appState.avatarDraft,
+  });
+
+  if (!response.ok) {
+    appState.avatarSaving = false;
+    appState.transientStatus = response.error || "아바타 저장에 실패했습니다.";
+    renderApp(appState, elements);
+    return;
+  }
+
+  appState.avatarSaving = false;
+  appState.avatarEditorOpen = false;
+  appState.transientStatus = "";
+  renderApp(appState, elements);
+}
+
 function initializeApp(socket) {
   if (typeof document === "undefined") {
     return;
@@ -1208,6 +1537,54 @@ function initializeApp(socket) {
 
   elements.leaveRoomButton.addEventListener("click", () => {
     window.location.reload();
+  });
+
+  elements.roomPlayerList.addEventListener("click", (event) => {
+    if (!event.target.closest("[data-edit-avatar-trigger='true']")) {
+      return;
+    }
+
+    openAvatarEditor(appState, elements);
+  });
+
+  elements.selfProfileButton?.addEventListener("click", () => {
+    openAvatarEditor(appState, elements);
+  });
+
+  [elements.avatarSkinOptions, elements.avatarEyeOptions, elements.avatarMouthOptions].forEach(
+    (target) => {
+      target?.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-avatar-option]");
+
+        if (!button) {
+          return;
+        }
+
+        appState.avatarDraft = normalizeAvatar({
+          ...appState.avatarDraft,
+          [button.dataset.avatarOption]: button.dataset.avatarValue,
+        });
+        renderApp(appState, elements);
+      });
+    }
+  );
+
+  elements.saveAvatarButton?.addEventListener("click", () => {
+    handleSaveAvatar(appState, elements);
+  });
+
+  elements.closeAvatarEditorButton?.addEventListener("click", () => {
+    closeAvatarEditor(appState, elements);
+  });
+
+  elements.cancelAvatarEditorButton?.addEventListener("click", () => {
+    closeAvatarEditor(appState, elements);
+  });
+
+  elements.avatarEditorModal?.addEventListener("click", (event) => {
+    if (event.target === elements.avatarEditorModal) {
+      closeAvatarEditor(appState, elements);
+    }
   });
 
   elements.playerHand.addEventListener("click", (event) => {

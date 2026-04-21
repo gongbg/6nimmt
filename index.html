@@ -200,7 +200,7 @@
     <section class="hidden flex-1 flex-col" id="game-screen">
       <div class="flex justify-center gap-3 lg:gap-6 mb-3 lg:mb-5" id="opponents-hud">
         <div class="bg-surface-container-highest/80 backdrop-blur-[20px] p-2 pr-4 rounded-full flex items-center gap-3 border border-outline-variant/15 shadow-[0_8px_32px_-4px_rgba(204,235,201,0.08)]" data-opponent-slot="0">
-          <img alt="Avatar" class="w-10 h-10 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDMS87wAY--YQmeJI0XvkGKiQC2KFHU6uTv2-L-VmuT_GEYx5buvKQpo9QZTMdDDy5TU0ZKWheM2JKpZfWic0kkknaBnjxCHBlXJ4OX-uqrJ-hDN3aa3IE8Nf9W-ccJ3V-CBa_BN0FBvWhTJeVTt4AwevbVIq2E4le2czSDAc6KRC3tTeqdgDlPyyyimyG-2O0dRhnVIgEgOJrBd2Qi9-DRfw_wqIZ9KZnop49cRaaiokQNsC2_wgIHopH7dbMYflouPzlgaVB0SBk">
+          <div class="h-10 w-10 shrink-0" data-opponent-avatar></div>
           <div class="flex flex-col">
             <span class="font-headline font-bold text-sm tracking-wide" data-opponent-name>Opponent</span>
             <span class="text-xs text-on-surface-variant flex items-center gap-1 font-semibold">
@@ -215,7 +215,7 @@
         </div>
 
         <div class="bg-surface-container-highest/80 backdrop-blur-[20px] p-2 pr-4 rounded-full flex items-center gap-3 border border-outline-variant/15 shadow-[0_8px_32px_-4px_rgba(204,235,201,0.08)]" data-opponent-slot="1">
-          <img alt="Avatar" class="w-10 h-10 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBbk7hdAiASLrkJDzPPtIRTs9Ylu908_RFjDnQgaejTt_yd2fGMdaWiSJr1rL6Z2sJlCL1jbrLCy5hm0qkjf6pDscEfItelt3BWzmFvBetv-5oTIOq3oJMorBCpkD9MH89vXayVW-jtmKlazeGW-xRsGXVLwc4ryqb0c6h8ztTXBaMMGyqOoNyqnCjmgN6craEDi77CV-8KvUEX8zMviofh4IvxxX2XiCEJbks_sW95VsoAzO7v7X9u97upGHsoNvZp3yb8EDwSac4">
+          <div class="h-10 w-10 shrink-0" data-opponent-avatar></div>
           <div class="flex flex-col">
             <span class="font-headline font-bold text-sm tracking-wide" data-opponent-name>Opponent</span>
             <span class="text-xs text-on-surface-variant flex items-center gap-1 font-semibold">
@@ -230,7 +230,7 @@
         </div>
 
         <div class="bg-surface-container-highest/80 backdrop-blur-[20px] p-2 pr-4 rounded-full items-center gap-3 border border-outline-variant/15 shadow-[0_8px_32px_-4px_rgba(204,235,201,0.08)] hidden md:flex" data-opponent-slot="2">
-          <img alt="Avatar" class="w-10 h-10 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDwGYLKL4Fs-K1ijfJpTQQ8xu5ffgUFKrofupyKD5hYvDhiHG0G2-kqJC4PUkH1Qa6aiAkvWMo9d4dfyXv1KI9e-54V2mETSfaj7DVtIob2s3B-C03z2SY2p0a7pu3VS3cJh6dUNJy0J4D0xsWzECIfgJHUZL8-UauAEQJQuxB0tNklSlQcb8ba00f3-AionmA1R76dSNoa-nANb_4UarjHtAuigOr51bNvwfX_tMGQcAFh84KFAp10HupQKD_4qn-L-QoDjG0pSEo">
+          <div class="h-10 w-10 shrink-0" data-opponent-avatar></div>
           <div class="flex flex-col">
             <span class="font-headline font-bold text-sm tracking-wide" data-opponent-name>Opponent</span>
             <span class="text-xs text-on-surface-variant flex items-center gap-1 font-semibold">
@@ -255,6 +255,13 @@
             <p class="text-sm text-on-surface-variant mt-1" id="status-message">카드를 선택하고 제출하세요.</p>
           </div>
           <div class="flex flex-wrap items-center gap-3">
+            <button class="rounded-full border border-outline-variant/20 bg-surface-container-lowest/80 px-3 py-2 text-sm font-semibold text-on-surface flex items-center gap-3 transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-50" id="self-profile-button" type="button">
+              <span class="h-11 w-11 shrink-0" id="self-profile-avatar"></span>
+              <span class="text-left">
+                <span class="block text-[11px] uppercase tracking-[0.22em] text-primary/75 font-black">Profile</span>
+                <span class="block font-headline text-sm font-black text-on-surface" id="self-profile-name">Player</span>
+              </span>
+            </button>
             <div class="rounded-full border border-outline-variant/20 bg-surface-container-lowest px-4 py-2 text-sm font-semibold text-on-surface flex items-center gap-2">
               <span class="text-[18px] text-primary inline-flex" data-static-bull-icon></span>
               <span>누적 벌점</span>
@@ -335,6 +342,57 @@
         <button class="rounded-full bg-gradient-to-r from-primary to-primary-container px-5 py-3 text-sm font-black text-on-primary-fixed-variant shadow-[0_14px_30px_-12px_rgba(255,112,67,0.75)] transition-transform active:scale-95" id="restart-from-modal-button" type="button">
           다음 라운드 시작
         </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="fixed inset-0 z-[75] hidden items-center justify-center bg-black/55 backdrop-blur-sm p-4" id="avatar-editor-modal">
+    <div class="w-full max-w-3xl rounded-[2rem] border border-outline-variant/20 bg-surface-container-highest/95 p-6 lg:p-8 shadow-[0_24px_80px_-18px_rgba(0,0,0,0.75)]">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <p class="text-xs uppercase tracking-[0.3em] text-primary/80 font-bold">Avatar Atelier</p>
+          <h2 class="mt-2 text-2xl lg:text-3xl font-headline font-black text-on-surface">내 아바타 꾸미기</h2>
+          <p class="mt-2 text-sm text-on-surface-variant">배경색, 눈, 입 조합을 미리 보고 저장하면 방 안 전체에 즉시 반영됩니다.</p>
+        </div>
+        <button class="rounded-full border border-outline-variant/25 bg-surface-container-lowest p-2 text-on-surface transition-transform active:scale-95" id="close-avatar-editor-button" type="button">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+
+      <div class="mt-6 grid gap-6 lg:grid-cols-[0.88fr_1.12fr]">
+        <section class="rounded-[1.75rem] border border-outline-variant/15 bg-surface-container-low/80 p-5">
+          <p class="text-xs uppercase tracking-[0.3em] text-primary/80 font-bold">Preview</p>
+          <div class="mt-4 flex flex-col items-center gap-4">
+            <div class="flex h-36 w-36 items-center justify-center rounded-[2rem] border border-outline-variant/15 bg-surface-container-lowest/90" id="avatar-preview"></div>
+            <p class="text-sm text-on-surface-variant text-center" id="avatar-editor-status">수정 중에는 이 미리보기에서 바로 확인할 수 있습니다.</p>
+          </div>
+        </section>
+
+        <section class="rounded-[1.75rem] border border-outline-variant/15 bg-surface-container-low/80 p-5">
+          <div>
+            <p class="text-xs uppercase tracking-[0.3em] text-primary/80 font-bold">Skin Color</p>
+            <div class="mt-3 flex flex-wrap gap-3" id="avatar-skin-options"></div>
+          </div>
+
+          <div class="mt-5">
+            <p class="text-xs uppercase tracking-[0.3em] text-primary/80 font-bold">Eyes</p>
+            <div class="mt-3 flex flex-wrap gap-3" id="avatar-eye-options"></div>
+          </div>
+
+          <div class="mt-5">
+            <p class="text-xs uppercase tracking-[0.3em] text-primary/80 font-bold">Mouth</p>
+            <div class="mt-3 flex flex-wrap gap-3" id="avatar-mouth-options"></div>
+          </div>
+
+          <div class="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+            <button class="rounded-full border border-outline-variant/25 bg-surface-container-lowest px-5 py-3 text-sm font-bold text-on-surface transition-transform active:scale-95" id="cancel-avatar-editor-button" type="button">
+              닫기
+            </button>
+            <button class="rounded-full bg-gradient-to-r from-primary to-primary-container px-5 py-3 text-sm font-black text-on-primary-fixed-variant shadow-[0_14px_30px_-12px_rgba(255,112,67,0.75)] transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-50" id="save-avatar-button" type="button">
+              저장
+            </button>
+          </div>
+        </section>
       </div>
     </div>
   </div>
