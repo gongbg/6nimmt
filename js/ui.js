@@ -131,77 +131,193 @@ function createBotAvatarElement(index, sizeClass = "h-10 w-10") {
   return wrapper;
 }
 
-function createBullIcon(className = "") {
+function getPenaltyTier(penalty) {
+  if (penalty >= 7) {
+    return "inferno";
+  }
+
+  if (penalty >= 5) {
+    return "threat";
+  }
+
+  if (penalty >= 2) {
+    return "grumpy";
+  }
+
+  return "gentle";
+}
+
+function getBullHeadSvgMarkup(tier) {
+  const byTier = {
+    gentle: `
+      <svg viewBox="0 0 64 64" aria-hidden="true" class="bull-icon" fill="none">
+        <path d="M17 20c-4-3-6-8-5-12 6 1 11 4 13 9-2 0-5 1-8 3Zm30 0c3-2 6-3 8-3 2-5 7-8 13-9 1 4-1 9-5 12-3-2-6-3-8-3Z" fill="#fce9d9"></path>
+        <path d="M16 27c0-8 7-15 16-15s16 7 16 15v9c0 10-7 17-16 17s-16-7-16-17v-9Z" fill="#fff4e7"></path>
+        <circle cx="26" cy="31" r="2.4" fill="#5a392e"></circle>
+        <circle cx="38" cy="31" r="2.4" fill="#5a392e"></circle>
+        <path d="M26 40c2.5 2.5 9.5 2.5 12 0" stroke="#b66b59" stroke-width="2.8" stroke-linecap="round"></path>
+        <path d="M21 21c2-4 6-7 11-7s9 3 11 7" stroke="#d8ad8b" stroke-width="3" stroke-linecap="round"></path>
+      </svg>
+    `,
+    grumpy: `
+      <svg viewBox="0 0 64 64" aria-hidden="true" class="bull-icon" fill="none">
+        <path d="M12 18c-4-4-5-10-4-14 8 1 13 4 15 10-4 0-7 1-11 4Zm40 0c4-3 7-4 11-4 2-6 7-9 15-10 1 4 0 10-4 14-4-3-7-4-11-4Z" fill="#e7c7bb"></path>
+        <path d="M15 27c0-9 7-16 17-16s17 7 17 16v10c0 10-7 16-17 16S15 47 15 37V27Z" fill="#f2d9cd"></path>
+        <path d="M22 29l7-2" stroke="#452117" stroke-width="2.5" stroke-linecap="round"></path>
+        <path d="M42 29l-7-2" stroke="#452117" stroke-width="2.5" stroke-linecap="round"></path>
+        <circle cx="27" cy="32" r="2.5" fill="#452117"></circle>
+        <circle cx="37" cy="32" r="2.5" fill="#452117"></circle>
+        <path d="M26 42c1.5-2 10.5-2 12 0" stroke="#7f260d" stroke-width="3" stroke-linecap="round"></path>
+      </svg>
+    `,
+    threat: `
+      <svg viewBox="0 0 64 64" aria-hidden="true" class="bull-icon" fill="none">
+        <path d="M9 18C6 11 6 5 8 1c7 2 12 6 15 12-4 1-8 2-14 5Zm46 0c6-3 10-4 14-5 2-6 8-10 15-12 2 4 2 10-1 17-6-3-10-4-14-5Z" fill="#ffd4c9"></path>
+        <path d="M13 28c0-10 8-18 19-18s19 8 19 18v10c0 11-8 18-19 18s-19-7-19-18V28Z" fill="#3a0f0f"></path>
+        <path d="M19 23c3-6 7-10 13-10s10 4 13 10" stroke="#8d2a20" stroke-width="4" stroke-linecap="round"></path>
+        <path d="M22 31l9-4" stroke="#ffcabd" stroke-width="2.8" stroke-linecap="round"></path>
+        <path d="M42 31l-9-4" stroke="#ffcabd" stroke-width="2.8" stroke-linecap="round"></path>
+        <circle cx="27" cy="34" r="2.7" fill="#ff6657"></circle>
+        <circle cx="37" cy="34" r="2.7" fill="#ff6657"></circle>
+        <path d="M24 45c3 1 13 1 16 0" stroke="#ff9a8d" stroke-width="3.5" stroke-linecap="round"></path>
+      </svg>
+    `,
+    inferno: `
+      <svg viewBox="0 0 64 64" aria-hidden="true" class="bull-icon" fill="none">
+        <path d="M7 18C3 10 3 3 6 0c8 3 14 8 17 15-6 0-10 1-16 3Zm50 0c6-2 10-3 16-3 3-7 9-12 17-15 3 3 3 10-1 18-6-2-10-3-16-3Z" fill="#ffd8d3"></path>
+        <path d="M12 28c0-10 9-19 20-19s20 9 20 19v12c0 10-9 18-20 18s-20-8-20-18V28Z" fill="#180404"></path>
+        <path d="M17 24c4-8 9-12 15-12s11 4 15 12" stroke="#6f0009" stroke-width="4" stroke-linecap="round"></path>
+        <path d="M21 31l10-5" stroke="#ffb4ab" stroke-width="3" stroke-linecap="round"></path>
+        <path d="M43 31l-10-5" stroke="#ffb4ab" stroke-width="3" stroke-linecap="round"></path>
+        <circle cx="27" cy="34" r="3" fill="#ff3629"></circle>
+        <circle cx="37" cy="34" r="3" fill="#ff3629"></circle>
+        <path d="M23 46c4 2 14 2 18 0" stroke="#ff7a6f" stroke-width="4" stroke-linecap="round"></path>
+      </svg>
+    `,
+  };
+
+  return byTier[tier] ?? byTier.gentle;
+}
+
+function createBullIcon(tier, className = "") {
   const wrapper = createUiElement(
     "span",
     `inline-flex items-center justify-center ${className}`.trim()
   );
-  wrapper.innerHTML = BULL_HEAD_SVG;
+  wrapper.innerHTML = getBullHeadSvgMarkup(tier);
   return wrapper;
 }
 
-function getPenaltyColorClass(penalty) {
-  if (penalty >= 5) {
-    return "text-error";
+function getBullGridColumns(penalty) {
+  if (penalty <= 1) {
+    return 1;
   }
 
-  if (penalty >= 3) {
-    return "text-tertiary-container";
+  if (penalty <= 3) {
+    return 2;
   }
 
-  if (penalty === 2) {
-    return "text-tertiary";
-  }
-
-  return "text-secondary";
+  return 3;
 }
 
-function createBullIcons(penalty, sizeClass) {
-  const wrapper = createUiElement("div", `flex gap-0.5 ${getPenaltyColorClass(penalty)}`);
+function createBullCluster(card, compact = false) {
+  const tier = getPenaltyTier(card.penalty);
+  const wrapper = createUiElement(
+    "div",
+    [
+      "card-bull-grid",
+      `card-bull-grid-${card.penalty}`,
+      compact ? "card-bull-grid-compact" : "",
+      `card-bull-tier-${tier}`,
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
 
-  for (let count = 0; count < penalty; count += 1) {
-    wrapper.appendChild(createBullIcon(sizeClass));
+  wrapper.style.setProperty("--bull-columns", String(getBullGridColumns(card.penalty)));
+
+  for (let count = 0; count < card.penalty; count += 1) {
+    wrapper.appendChild(createBullIcon(tier, compact ? "text-[16px] sm:text-[18px]" : "text-[18px] lg:text-[20px]"));
   }
 
   return wrapper;
+}
+
+function createCardFace(card, options = {}) {
+  const { compact = false, selected = false } = options;
+  const tier = getPenaltyTier(card.penalty);
+  const face = createUiElement(
+    "div",
+    [
+      "card-face",
+      `card-tier-${tier}`,
+      compact ? "card-face-compact" : "",
+      selected ? "card-face-selected" : "",
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+  const topRow = createUiElement("div", "card-topline");
+  const numberBadge = createUiElement(
+    "span",
+    compact ? "card-number-badge card-number-badge-compact" : "card-number-badge",
+    String(card.number)
+  );
+  const penaltyBadge = createUiElement(
+    "span",
+    compact ? "card-penalty-badge card-penalty-badge-compact" : "card-penalty-badge",
+    `${card.penalty}pt`
+  );
+  topRow.append(numberBadge, penaltyBadge);
+
+  const body = createUiElement("div", compact ? "card-body card-body-compact" : "card-body");
+  body.appendChild(createBullCluster(card, compact));
+
+  const footer = createUiElement(
+    "div",
+    compact ? "card-footer card-footer-compact" : "card-footer",
+    card.penalty >= 7 ? "Inferno bull" : card.penalty >= 5 ? "Raging bull" : card.penalty >= 2 ? "Grumpy herd" : "Baby calf"
+  );
+
+  if (tier === "threat" || tier === "inferno") {
+    const spikes = createUiElement("div", "card-threat-overlay");
+    face.appendChild(spikes);
+  }
+
+  if (tier === "inferno") {
+    face.appendChild(createUiElement("div", "card-inferno-overlay"));
+    face.appendChild(createUiElement("div", "card-laser-overlay"));
+  }
+
+  face.append(topRow, body, footer);
+  return face;
 }
 
 function createTableCard(card, rotateClass = "") {
+  const tier = getPenaltyTier(card.penalty);
   const cardElement = createUiElement(
     "div",
     [
       "table-card",
       "w-11 h-14 sm:w-12 sm:h-16 lg:w-[4.5rem] lg:h-24 rounded-xl",
-      "bg-gradient-to-b from-surface-bright to-surface-container-highest",
-      "border border-outline-variant/15 flex flex-col justify-between items-center py-1",
-      "shadow-[0_8px_32px_-4px_rgba(204,235,201,0.08)]",
+      "border shadow-[0_8px_32px_-4px_rgba(204,235,201,0.08)] overflow-hidden relative",
+      `table-card-tier-${tier}`,
       rotateClass,
     ]
       .filter(Boolean)
       .join(" ")
   );
 
-  const topIcons = createBullIcons(card.penalty, "text-[10px]");
-  const bottomIcons = createBullIcons(card.penalty, "text-[10px]");
-  bottomIcons.classList.add("rotate-180");
-
-  cardElement.append(
-    topIcons,
-    createUiElement(
-      "span",
-      "font-headline font-bold text-lg lg:text-2xl text-on-surface",
-      String(card.number)
-    ),
-    bottomIcons
-  );
-
+  cardElement.dataset.penaltyTier = tier;
+  cardElement.dataset.penalty = String(card.penalty);
+  cardElement.appendChild(createCardFace(card));
   return cardElement;
 }
 
 function createHandCard(card, options = {}) {
   const {
-    selected = false,
-    rotate = 0,
+      selected = false,
+      rotate = 0,
     offset = 0,
     overlap = 0,
     disabled = false,
@@ -213,35 +329,29 @@ function createHandCard(card, options = {}) {
   const sizeClass = compact
     ? "w-11 h-14 sm:w-12 sm:h-16 rounded-xl"
     : "w-12 h-[4.5rem] sm:w-14 sm:h-20 lg:w-[4.5rem] lg:h-28 rounded-xl";
+  const tier = getPenaltyTier(card.penalty);
   const cardElement = createUiElement(
     "button",
     [
       compact ? "reveal-card" : "hand-card",
       sizeClass,
-      "border flex flex-col justify-between items-center py-1 lg:py-2",
+      "border overflow-hidden relative",
       compact
         ? "shadow-[0_10px_28px_-8px_rgba(0,0,0,0.45)] cursor-default relative"
         : "shadow-[0_8px_32px_-4px_rgba(0,0,0,0.5)] cursor-pointer relative",
-      selected
-        ? "bg-gradient-to-b from-primary to-primary-container border-primary-fixed-dim/30 z-20"
-        : "bg-gradient-to-b from-surface-bright to-surface-container-highest border-outline-variant/15 z-10",
+      selected ? "border-primary-fixed-dim/30 z-20" : "border-outline-variant/15 z-10",
       highlighted ? "ring-2 ring-primary/70 scale-[1.05]" : "",
       dimmed ? "opacity-45" : "",
+      `hand-card-tier-${tier}`,
     ]
       .filter(Boolean)
       .join(" ")
   );
 
-  const iconColorClass = selected ? "text-on-primary-fixed-variant" : getPenaltyColorClass(card.penalty);
-  const numberColorClass = selected ? "text-on-primary-fixed-variant" : "text-on-surface";
-  const iconSizeClass = compact ? "text-[9px] sm:text-[10px]" : "text-[10px] lg:text-[14px]";
-  const topIcons = createBullIcons(card.penalty, iconSizeClass);
-  const bottomIcons = createBullIcons(card.penalty, iconSizeClass);
-  topIcons.className = `flex gap-0.5 ${iconColorClass}`;
-  bottomIcons.className = `flex gap-0.5 ${iconColorClass} rotate-180`;
-
   cardElement.type = "button";
   cardElement.dataset.cardNumber = String(card.number);
+  cardElement.dataset.penaltyTier = tier;
+  cardElement.dataset.penalty = String(card.penalty);
 
   if (!compact) {
     cardElement.style.setProperty("--card-rotate", `${rotate}deg`);
@@ -257,16 +367,11 @@ function createHandCard(card, options = {}) {
     cardElement.disabled = true;
   }
 
-  cardElement.append(
-    topIcons,
-    createUiElement(
-      "span",
-      compact
-        ? `font-headline font-bold text-base sm:text-lg ${numberColorClass}`
-        : `font-headline font-bold text-xl lg:text-3xl ${numberColorClass}`,
-      String(card.number)
-    ),
-    bottomIcons
+  cardElement.appendChild(
+    createCardFace(card, {
+      compact,
+      selected,
+    })
   );
 
   return cardElement;
