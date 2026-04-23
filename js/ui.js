@@ -2189,10 +2189,6 @@ async function handleSendChat(appState, elements) {
     return;
   }
 
-  appState.room = {
-    ...(appState.room ?? {}),
-    chatMessages: [...(Array.isArray(appState.room?.chatMessages) ? appState.room.chatMessages : []), response.message].slice(-30),
-  };
   appState.transientStatus = "";
   elements.chatInput.value = "";
   renderApp(appState, elements);
