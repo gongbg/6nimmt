@@ -28,6 +28,7 @@ const DEFAULT_AVATAR = {
   eyeType: AVATAR_EYE_TYPES[0],
   mouthType: AVATAR_MOUTH_TYPES[0],
 };
+const ACTIVE_SESSION_STORAGE_KEY = "sixnimmt.activeSession";
 
 const BULL_HEAD_SVG = `
   <svg viewBox="0 0 64 64" aria-hidden="true" class="bull-icon" fill="currentColor">
@@ -48,6 +49,73 @@ function createUiElement(tagName, className = "", textContent = "") {
   }
 
   return element;
+}
+
+function saveActiveSession(appState) {
+  if (typeof window === "undefined" || !window.sessionStorage) {
+    return;
+  }
+
+  if (!appState.playerId || !appState.room?.roomCode) {
+    window.sessionStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+    return;
+  }
+
+  const payload = {
+    playerId: appState.playerId,
+    roomCode: appState.room.roomCode,
+    room: appState.room,
+    serverState: appState.serverState,
+    savedAt: Date.now(),
+  };
+
+  window.sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(payload));
+}
+
+function loadActiveSession() {
+  if (typeof window === "undefined" || !window.sessionStorage) {
+    return null;
+  }
+
+  const rawValue = window.sessionStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
+
+  if (!rawValue) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(rawValue);
+  } catch (_error) {
+    window.sessionStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+    return null;
+  }
+}
+
+function clearActiveSession() {
+  if (typeof window === "undefined" || !window.sessionStorage) {
+    return;
+  }
+
+  window.sessionStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+}
+
+function resetAppToLobby(appState) {
+  appState.playerId = null;
+  appState.room = null;
+  appState.serverState = null;
+  appState.selectedCardNumber = null;
+  appState.pendingSubmit = false;
+  appState.transientStatus = "";
+  appState.roomStatus = "?뚮젅?댁뼱瑜?湲곕떎由щ뒗 以묒엯?덈떎.";
+  appState.leaveGameModalOpen = false;
+  appState.avatarEditorOpen = false;
+  appState.avatarSaving = false;
+  appState.leavingGame = false;
+  appState.isRestoringSession = false;
+  appState.summaryOpen = false;
+  appState.playLog = [];
+  appState.processedLogIds = new Set();
+  resetHighlightState(appState);
 }
 
 function normalizeAvatar(avatar) {
@@ -133,79 +201,130 @@ function createBotAvatarElement(index, sizeClass = "h-10 w-10") {
 
 function getPenaltyTier(penalty) {
   if (penalty >= 7) {
-    return "inferno";
+    return "disaster";
   }
 
   if (penalty >= 5) {
-    return "threat";
+    return "danger";
+  }
+
+  if (penalty >= 3) {
+    return "warning";
   }
 
   if (penalty >= 2) {
-    return "grumpy";
+    return "caution";
   }
 
-  return "gentle";
+  return "safe";
+}
+
+function getPenaltyForCardNumber(number) {
+  const normalizedNumber = Number(number);
+
+  if (!Number.isInteger(normalizedNumber) || normalizedNumber < 1 || normalizedNumber > 104) {
+    throw new Error(`Card number must be an integer between 1 and 104. Received: ${number}`);
+  }
+
+  if (normalizedNumber === 55) {
+    return 7;
+  }
+
+  if (normalizedNumber % 11 === 0) {
+    return 5;
+  }
+
+  if (normalizedNumber % 10 === 0) {
+    return 3;
+  }
+
+  if (normalizedNumber % 5 === 0) {
+    return 2;
+  }
+
+  return 1;
+}
+
+function normalizeCardVisualInput(cardOrNumber) {
+  if (typeof cardOrNumber === "number" || typeof cardOrNumber === "string") {
+    const number = Number(cardOrNumber);
+
+    return {
+      number,
+      penalty: getPenaltyForCardNumber(number),
+    };
+  }
+
+  const number = Number(cardOrNumber?.number);
+
+  return {
+    ...cardOrNumber,
+    number,
+    penalty: getPenaltyForCardNumber(number),
+  };
 }
 
 function getBullHeadSvgMarkup(tier) {
   const byTier = {
-    gentle: `
+    safe: `
       <svg viewBox="0 0 64 64" aria-hidden="true" class="bull-icon" fill="none">
-        <path d="M17 20c-4-3-6-8-5-12 6 1 11 4 13 9-2 0-5 1-8 3Zm30 0c3-2 6-3 8-3 2-5 7-8 13-9 1 4-1 9-5 12-3-2-6-3-8-3Z" fill="#fce9d9"></path>
-        <path d="M16 27c0-8 7-15 16-15s16 7 16 15v9c0 10-7 17-16 17s-16-7-16-17v-9Z" fill="#fff4e7"></path>
-        <circle cx="26" cy="31" r="2.4" fill="#5a392e"></circle>
-        <circle cx="38" cy="31" r="2.4" fill="#5a392e"></circle>
-        <path d="M26 40c2.5 2.5 9.5 2.5 12 0" stroke="#b66b59" stroke-width="2.8" stroke-linecap="round"></path>
-        <path d="M21 21c2-4 6-7 11-7s9 3 11 7" stroke="#d8ad8b" stroke-width="3" stroke-linecap="round"></path>
+        <path d="M17 22c-5-4-7-9-7-14 5 1 10 4 13 8-1 2-3 4-6 6Z" fill="currentColor"></path>
+        <path d="M47 22c3-2 5-4 6-6 3-4 8-7 13-8 0 5-2 10-7 14-3-2-5-4-6-6Z" fill="currentColor"></path>
+        <path d="M32 15c10 0 18 8 18 18 0 11-7 19-18 19s-18-8-18-19c0-10 8-18 18-18Z" fill="currentColor"></path>
+        <path d="M19 24c4-6 8-8 13-8s9 2 13 8" stroke="rgba(255,255,255,0.18)" stroke-width="2.2" stroke-linecap="round"></path>
+        <path d="M23 44c3 2 15 2 18 0" stroke="rgba(0,0,0,0.08)" stroke-width="3" stroke-linecap="round"></path>
       </svg>
     `,
-    grumpy: `
+    caution: `
       <svg viewBox="0 0 64 64" aria-hidden="true" class="bull-icon" fill="none">
-        <path d="M12 18c-4-4-5-10-4-14 8 1 13 4 15 10-4 0-7 1-11 4Zm40 0c4-3 7-4 11-4 2-6 7-9 15-10 1 4 0 10-4 14-4-3-7-4-11-4Z" fill="#e7c7bb"></path>
-        <path d="M15 27c0-9 7-16 17-16s17 7 17 16v10c0 10-7 16-17 16S15 47 15 37V27Z" fill="#f2d9cd"></path>
-        <path d="M22 29l7-2" stroke="#452117" stroke-width="2.5" stroke-linecap="round"></path>
-        <path d="M42 29l-7-2" stroke="#452117" stroke-width="2.5" stroke-linecap="round"></path>
-        <circle cx="27" cy="32" r="2.5" fill="#452117"></circle>
-        <circle cx="37" cy="32" r="2.5" fill="#452117"></circle>
-        <path d="M26 42c1.5-2 10.5-2 12 0" stroke="#7f260d" stroke-width="3" stroke-linecap="round"></path>
+        <path d="M16 22c-5-4-8-9-8-14 6 2 11 4 14 8-1 2-3 4-6 6Z" fill="currentColor"></path>
+        <path d="M48 22c3-2 5-4 6-6 3-4 8-6 14-8 0 5-3 10-8 14-3-2-5-4-6-6Z" fill="currentColor"></path>
+        <path d="M32 14c10.5 0 18.5 8 18.5 18.5S43 52 32 52 13.5 43.5 13.5 32.5 21.5 14 32 14Z" fill="currentColor"></path>
+        <path d="M19 24c4-6 8-8 13-8s9 2 13 8" stroke="rgba(255,255,255,0.14)" stroke-width="2.1" stroke-linecap="round"></path>
+        <path d="M22.5 44c3 1.5 16 1.5 19 0" stroke="rgba(0,0,0,0.1)" stroke-width="3" stroke-linecap="round"></path>
       </svg>
     `,
-    threat: `
+    warning: `
       <svg viewBox="0 0 64 64" aria-hidden="true" class="bull-icon" fill="none">
-        <path d="M9 18C6 11 6 5 8 1c7 2 12 6 15 12-4 1-8 2-14 5Zm46 0c6-3 10-4 14-5 2-6 8-10 15-12 2 4 2 10-1 17-6-3-10-4-14-5Z" fill="#ffd4c9"></path>
-        <path d="M13 28c0-10 8-18 19-18s19 8 19 18v10c0 11-8 18-19 18s-19-7-19-18V28Z" fill="#3a0f0f"></path>
-        <path d="M19 23c3-6 7-10 13-10s10 4 13 10" stroke="#8d2a20" stroke-width="4" stroke-linecap="round"></path>
-        <path d="M22 31l9-4" stroke="#ffcabd" stroke-width="2.8" stroke-linecap="round"></path>
-        <path d="M42 31l-9-4" stroke="#ffcabd" stroke-width="2.8" stroke-linecap="round"></path>
-        <circle cx="27" cy="34" r="2.7" fill="#ff6657"></circle>
-        <circle cx="37" cy="34" r="2.7" fill="#ff6657"></circle>
-        <path d="M24 45c3 1 13 1 16 0" stroke="#ff9a8d" stroke-width="3.5" stroke-linecap="round"></path>
+        <path d="M15 22c-6-4-9-9-9-14 6 2 12 4 15 8-2 2-4 4-6 6Z" fill="currentColor"></path>
+        <path d="M49 22c2-2 4-4 6-6 3-4 9-6 15-8 0 5-3 10-9 14-2-2-4-4-6-6Z" fill="currentColor"></path>
+        <path d="M32 13c11 0 19 8 19 19 0 12-7.5 20-19 20S13 44 13 32c0-11 8-19 19-19Z" fill="currentColor"></path>
+        <path d="M18.5 24c4.5-6.5 8.5-8.5 13.5-8.5s9 2 13.5 8.5" stroke="rgba(255,255,255,0.12)" stroke-width="2" stroke-linecap="round"></path>
+        <path d="M22 44.5c3.5 1.5 16.5 1.5 20 0" stroke="rgba(0,0,0,0.12)" stroke-width="3" stroke-linecap="round"></path>
       </svg>
     `,
-    inferno: `
+    danger: `
       <svg viewBox="0 0 64 64" aria-hidden="true" class="bull-icon" fill="none">
-        <path d="M7 18C3 10 3 3 6 0c8 3 14 8 17 15-6 0-10 1-16 3Zm50 0c6-2 10-3 16-3 3-7 9-12 17-15 3 3 3 10-1 18-6-2-10-3-16-3Z" fill="#ffd8d3"></path>
-        <path d="M12 28c0-10 9-19 20-19s20 9 20 19v12c0 10-9 18-20 18s-20-8-20-18V28Z" fill="#180404"></path>
-        <path d="M17 24c4-8 9-12 15-12s11 4 15 12" stroke="#6f0009" stroke-width="4" stroke-linecap="round"></path>
-        <path d="M21 31l10-5" stroke="#ffb4ab" stroke-width="3" stroke-linecap="round"></path>
-        <path d="M43 31l-10-5" stroke="#ffb4ab" stroke-width="3" stroke-linecap="round"></path>
-        <circle cx="27" cy="34" r="3" fill="#ff3629"></circle>
-        <circle cx="37" cy="34" r="3" fill="#ff3629"></circle>
-        <path d="M23 46c4 2 14 2 18 0" stroke="#ff7a6f" stroke-width="4" stroke-linecap="round"></path>
+        <path d="M15 22c-6-4-9-9-9-14 6 2 12 4 15 8-2 2-4 4-6 6Z" fill="currentColor"></path>
+        <path d="M49 22c2-2 4-4 6-6 3-4 9-6 15-8 0 5-3 10-9 14-2-2-4-4-6-6Z" fill="currentColor"></path>
+        <path d="M32 13c11 0 19 8 19 19 0 12-7.5 20-19 20S13 44 13 32c0-11 8-19 19-19Z" fill="currentColor"></path>
+        <path d="M18.5 24c4.5-6.5 8.5-8.5 13.5-8.5s9 2 13.5 8.5" stroke="rgba(255,255,255,0.12)" stroke-width="2" stroke-linecap="round"></path>
+        <path d="M22 44.5c3.5 1.5 16.5 1.5 20 0" stroke="rgba(0,0,0,0.12)" stroke-width="3" stroke-linecap="round"></path>
+      </svg>
+    `,
+    disaster: `
+      <svg viewBox="0 0 64 64" aria-hidden="true" class="bull-icon" fill="none">
+        <path d="M14 22c-6-4-10-9-10-15 7 2 13 5 16 9-2 2-4 4-6 6Z" fill="currentColor"></path>
+        <path d="M50 22c2-2 4-4 6-6 3-4 9-7 16-9 0 6-4 11-10 15-2-2-4-4-6-6Z" fill="currentColor"></path>
+        <path d="M32 12c11.5 0 19.5 8.5 19.5 19.5S44 52.5 32 52.5 12.5 43.5 12.5 31.5 20.5 12 32 12Z" fill="currentColor"></path>
+        <path d="M18 24c5-7 9-9 14-9s9 2 14 9" stroke="rgba(255,255,255,0.1)" stroke-width="2" stroke-linecap="round"></path>
+        <path d="M21.5 45c4 1.6 17 1.6 21 0" stroke="rgba(0,0,0,0.12)" stroke-width="3" stroke-linecap="round"></path>
       </svg>
     `,
   };
 
-  return byTier[tier] ?? byTier.gentle;
+  return byTier[tier] ?? byTier.safe;
 }
 
-function createBullIcon(tier, className = "") {
-  const wrapper = createUiElement(
+function createBullIcon(tierOrClassName = "", className = "") {
+  const resolvedClassName = className || tierOrClassName;
+  const icon = createUiElement(
     "span",
-    `inline-flex items-center justify-center ${className}`.trim()
+    `material-symbols-outlined inline-flex items-center justify-center ${resolvedClassName}`.trim(),
+    "pest_control"
   );
-  wrapper.innerHTML = getBullHeadSvgMarkup(tier);
-  return wrapper;
+  icon.style.fontVariationSettings = "'FILL' 1";
+  return icon;
 }
 
 function getBullGridColumns(penalty) {
@@ -213,20 +332,116 @@ function getBullGridColumns(penalty) {
     return 1;
   }
 
-  if (penalty <= 3) {
+  if (penalty === 2) {
     return 2;
+  }
+
+  if (penalty === 3) {
+    return 3;
+  }
+
+  if (penalty === 5) {
+    return 5;
+  }
+
+  if (penalty === 7) {
+    return 4;
   }
 
   return 3;
 }
 
+function createPenaltyIconRow(penalty, isActive, isBottom = false) {
+  const tier = getPenaltyTier(penalty);
+  const iconSizeClass =
+    penalty >= 7
+      ? isActive
+        ? "text-[10px] lg:text-[13px]"
+        : "text-[10px] lg:text-[12px]"
+      : penalty >= 5
+        ? isActive
+          ? "text-[11px] lg:text-[14px]"
+          : "text-[10px] lg:text-[13px]"
+        : isActive
+          ? "text-[11px] lg:text-[15px]"
+          : "text-[11px] lg:text-[14px]";
+  const iconToneClassByTier = isActive
+    ? {
+        safe: "text-secondary-fixed",
+        caution: "text-[#6e5a00]",
+        warning: "text-[#8a3b00]",
+        danger: "text-[#8b1e1e]",
+        disaster: "text-[#160607]",
+      }
+      : {
+          safe: "text-secondary",
+          caution: "text-lime-300",
+          warning: "text-orange-300",
+          danger: "text-red-400",
+          disaster: "text-[#160607]",
+        };
+  const createIcon = () => {
+    const icon = createUiElement(
+      "span",
+      ["material-symbols-outlined", iconSizeClass].join(" "),
+      "pest_control"
+    );
+    icon.style.fontVariationSettings = "'FILL' 1";
+    return icon;
+  };
+
+  if (penalty === 7) {
+    const wrapper = createUiElement(
+      "div",
+      [
+        "flex flex-col items-center gap-[1px] leading-none",
+        iconToneClassByTier[tier],
+        isBottom ? "rotate-180" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")
+    );
+    const firstRow = createUiElement("div", "flex items-center justify-center gap-0.5");
+    const secondRow = createUiElement("div", "flex items-center justify-center gap-0.5");
+
+    for (let count = 0; count < 4; count += 1) {
+      firstRow.appendChild(createIcon());
+    }
+
+    for (let count = 0; count < 3; count += 1) {
+      secondRow.appendChild(createIcon());
+    }
+
+    wrapper.append(firstRow, secondRow);
+    return wrapper;
+  }
+
+  const row = createUiElement(
+    "div",
+    [
+      "flex gap-0.5",
+      iconToneClassByTier[tier],
+      isBottom ? "rotate-180" : "",
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+
+  for (let count = 0; count < penalty; count += 1) {
+    row.appendChild(createIcon());
+  }
+
+  return row;
+}
+
 function createBullCluster(card, compact = false) {
-  const tier = getPenaltyTier(card.penalty);
+  const normalizedCard = normalizeCardVisualInput(card);
+  const tier = getPenaltyTier(normalizedCard.penalty);
   const wrapper = createUiElement(
     "div",
     [
       "card-bull-grid",
-      `card-bull-grid-${card.penalty}`,
+      `card-bull-grid-${normalizedCard.penalty}`,
       compact ? "card-bull-grid-compact" : "",
       `card-bull-tier-${tier}`,
     ]
@@ -234,18 +449,19 @@ function createBullCluster(card, compact = false) {
       .join(" ")
   );
 
-  wrapper.style.setProperty("--bull-columns", String(getBullGridColumns(card.penalty)));
+  wrapper.style.setProperty("--bull-columns", String(getBullGridColumns(normalizedCard.penalty)));
 
-  for (let count = 0; count < card.penalty; count += 1) {
-    wrapper.appendChild(createBullIcon(tier, compact ? "text-[16px] sm:text-[18px]" : "text-[18px] lg:text-[20px]"));
+  for (let count = 0; count < normalizedCard.penalty; count += 1) {
+    wrapper.appendChild(createBullIcon(tier, compact ? "text-[18px] sm:text-[20px]" : "text-[22px] lg:text-[24px]"));
   }
 
   return wrapper;
 }
 
 function createCardFace(card, options = {}) {
+  const normalizedCard = normalizeCardVisualInput(card);
   const { compact = false, selected = false } = options;
-  const tier = getPenaltyTier(card.penalty);
+  const tier = getPenaltyTier(normalizedCard.penalty);
   const face = createUiElement(
     "div",
     [
@@ -257,51 +473,63 @@ function createCardFace(card, options = {}) {
       .filter(Boolean)
       .join(" ")
   );
-  const topRow = createUiElement("div", "card-topline");
-  const numberBadge = createUiElement(
-    "span",
-    compact ? "card-number-badge card-number-badge-compact" : "card-number-badge",
-    String(card.number)
-  );
-  const penaltyBadge = createUiElement(
-    "span",
-    compact ? "card-penalty-badge card-penalty-badge-compact" : "card-penalty-badge",
-    `${card.penalty}pt`
-  );
-  topRow.append(numberBadge, penaltyBadge);
-
-  const body = createUiElement("div", compact ? "card-body card-body-compact" : "card-body");
-  body.appendChild(createBullCluster(card, compact));
-
-  const footer = createUiElement(
+  const body = createUiElement(
     "div",
-    compact ? "card-footer card-footer-compact" : "card-footer",
-    card.penalty >= 7 ? "Inferno bull" : card.penalty >= 5 ? "Raging bull" : card.penalty >= 2 ? "Grumpy herd" : "Baby calf"
+    compact ? "card-body card-body-compact card-body-minimal" : "card-body card-body-minimal"
   );
+  const bullCluster = createBullCluster(normalizedCard, compact);
+  const numberDisplay = createUiElement(
+    "span",
+    compact ? "card-number-display card-number-display-compact" : "card-number-display",
+    String(normalizedCard.number)
+  );
+  numberDisplay.dataset.digitCount = String(normalizedCard.number).length;
+  body.append(bullCluster, numberDisplay);
 
-  if (tier === "threat" || tier === "inferno") {
-    const spikes = createUiElement("div", "card-threat-overlay");
-    face.appendChild(spikes);
-  }
-
-  if (tier === "inferno") {
-    face.appendChild(createUiElement("div", "card-inferno-overlay"));
-    face.appendChild(createUiElement("div", "card-laser-overlay"));
-  }
-
-  face.append(topRow, body, footer);
+  face.append(body);
   return face;
 }
 
 function createTableCard(card, rotateClass = "") {
-  const tier = getPenaltyTier(card.penalty);
+  const normalizedCard = normalizeCardVisualInput(card);
+  const tier = getPenaltyTier(normalizedCard.penalty);
+  const glowClass =
+    tier === "danger" ? "card-glow-danger" : tier === "disaster" ? "card-glow-disaster" : "";
+  const tableCardPaletteByTier = {
+    safe: {
+      container:
+        "bg-gradient-to-b from-surface-bright to-surface-container-highest border-outline-variant/15 shadow-[0_8px_32px_-4px_rgba(204,235,201,0.08)]",
+      number: "text-on-surface",
+    },
+    caution: {
+      container:
+        "bg-gradient-to-b from-surface-bright to-surface-container-highest border-lime-300/55 shadow-[0_10px_34px_-8px_rgba(163,230,53,0.18)]",
+      number: "text-lime-200",
+    },
+    warning: {
+      container:
+        "bg-gradient-to-b from-surface-bright to-surface-container-highest border-orange-400/60 shadow-[0_10px_34px_-8px_rgba(251,146,60,0.2)]",
+      number: "text-orange-200",
+    },
+    danger: {
+      container:
+        "bg-gradient-to-b from-surface-bright to-surface-container-highest border-red-400/65 shadow-[0_12px_36px_-10px_rgba(248,113,113,0.24)]",
+      number: "text-red-200",
+    },
+    disaster: {
+      container:
+        "bg-gradient-to-b from-[#7f1d1d] via-[#991b1b] to-[#450a0a] border-red-300/65 shadow-[0_14px_40px_-10px_rgba(239,68,68,0.38)]",
+      number: "text-red-50",
+    },
+  };
+  const palette = tableCardPaletteByTier[tier];
   const cardElement = createUiElement(
     "div",
     [
       "table-card",
-      "w-11 h-14 sm:w-12 sm:h-16 lg:w-[4.5rem] lg:h-24 rounded-xl",
-      "border shadow-[0_8px_32px_-4px_rgba(204,235,201,0.08)] overflow-hidden relative",
-      `table-card-tier-${tier}`,
+      "w-12 h-16 lg:w-20 lg:h-28 rounded-xl border flex flex-col justify-between items-center py-1",
+      palette.container,
+      glowClass,
       rotateClass,
     ]
       .filter(Boolean)
@@ -309,49 +537,105 @@ function createTableCard(card, rotateClass = "") {
   );
 
   cardElement.dataset.penaltyTier = tier;
-  cardElement.dataset.penalty = String(card.penalty);
-  cardElement.appendChild(createCardFace(card));
+  cardElement.dataset.penalty = String(normalizedCard.penalty);
+  cardElement.append(
+    createPenaltyIconRow(normalizedCard.penalty, false, false),
+    createUiElement(
+      "span",
+      `mt-auto mb-[0.2rem] lg:mb-[0.35rem] translate-y-[0.08rem] lg:translate-y-[0.14rem] font-headline font-bold text-lg lg:text-2xl ${palette.number}`,
+      String(normalizedCard.number)
+    )
+  );
   return cardElement;
 }
 
 function createHandCard(card, options = {}) {
+  const normalizedCard = normalizeCardVisualInput(card);
+  const tier = getPenaltyTier(normalizedCard.penalty);
+  const glowClass =
+    tier === "danger" ? "card-glow-danger" : tier === "disaster" ? "card-glow-disaster" : "";
+  const handCardPaletteByTier = {
+    safe: {
+      idle:
+        "bg-gradient-to-b from-surface-bright to-surface-container-highest border-outline-variant/15 shadow-[0_8px_32px_-4px_rgba(204,235,201,0.08)]",
+      idleNumber: "text-on-surface",
+      active:
+        "bg-gradient-to-b from-[#5a66d6] via-[#4553c2] to-[#333a8f] border-secondary-fixed/65 shadow-[0_0_18px_rgba(99,102,241,0.42),0_0_34px_rgba(168,85,247,0.26)]",
+      activeNumber: "text-secondary-fixed",
+    },
+    caution: {
+      idle:
+        "bg-gradient-to-b from-surface-bright to-surface-container-highest border-lime-300/55 shadow-[0_10px_34px_-8px_rgba(163,230,53,0.18)]",
+      idleNumber: "text-lime-200",
+      active:
+        "bg-gradient-to-b from-[#f8f29b] to-[#b5d748] border-lime-100/60 shadow-[0_16px_40px_-8px_rgba(163,230,53,0.35)]",
+      activeNumber: "text-[#495400]",
+    },
+    warning: {
+      idle:
+        "bg-gradient-to-b from-surface-bright to-surface-container-highest border-orange-400/60 shadow-[0_10px_34px_-8px_rgba(251,146,60,0.2)]",
+      idleNumber: "text-orange-200",
+      active:
+        "bg-gradient-to-b from-[#ffd089] to-[#ff8a3d] border-orange-100/65 shadow-[0_16px_40px_-8px_rgba(251,146,60,0.38)]",
+      activeNumber: "text-[#6f2c00]",
+    },
+    danger: {
+      idle:
+        "bg-gradient-to-b from-surface-bright to-surface-container-highest border-red-400/65 shadow-[0_12px_36px_-10px_rgba(248,113,113,0.24)]",
+      idleNumber: "text-red-200",
+      active:
+        "bg-gradient-to-b from-[#ff9a9a] to-[#d93636] border-red-100/70 shadow-[0_18px_44px_-8px_rgba(239,68,68,0.42)]",
+      activeNumber: "text-[#5a0606]",
+    },
+    disaster: {
+      idle:
+        "bg-gradient-to-b from-[#7f1d1d] via-[#991b1b] to-[#450a0a] border-red-300/65 shadow-[0_14px_40px_-10px_rgba(239,68,68,0.38)]",
+      idleNumber: "text-red-50",
+      active:
+        "bg-gradient-to-b from-[#ef4444] via-[#dc2626] to-[#7f1d1d] border-red-100/75 shadow-[0_20px_48px_-8px_rgba(220,38,38,0.5)]",
+      activeNumber: "text-red-50",
+    },
+  };
+  const palette = handCardPaletteByTier[tier];
   const {
-      selected = false,
-      rotate = 0,
+        selected = false,
+        rotate = 0,
     offset = 0,
     overlap = 0,
-    disabled = false,
-    compact = false,
-    highlighted = false,
-    dimmed = false,
-  } = options;
+      disabled = false,
+      compact = false,
+      highlighted = false,
+      dimmed = false,
+      } = options;
 
-  const sizeClass = compact
-    ? "w-11 h-14 sm:w-12 sm:h-16 rounded-xl"
-    : "w-12 h-[4.5rem] sm:w-14 sm:h-20 lg:w-[4.5rem] lg:h-28 rounded-xl";
-  const tier = getPenaltyTier(card.penalty);
-  const cardElement = createUiElement(
-    "button",
-    [
-      compact ? "reveal-card" : "hand-card",
-      sizeClass,
-      "border overflow-hidden relative",
-      compact
-        ? "shadow-[0_10px_28px_-8px_rgba(0,0,0,0.45)] cursor-default relative"
-        : "shadow-[0_8px_32px_-4px_rgba(0,0,0,0.5)] cursor-pointer relative",
-      selected ? "border-primary-fixed-dim/30 z-20" : "border-outline-variant/15 z-10",
-      highlighted ? "ring-2 ring-primary/70 scale-[1.05]" : "",
-      dimmed ? "opacity-45" : "",
-      `hand-card-tier-${tier}`,
-    ]
-      .filter(Boolean)
-      .join(" ")
-  );
+    const sizeClass = compact
+      ? selected
+        ? "w-[3.25rem] h-[4.85rem] lg:w-[5.15rem] lg:h-[7.7rem]"
+        : "w-12 h-16 lg:w-20 lg:h-28"
+      : selected
+        ? "w-[3.25rem] h-[4.85rem] lg:w-[5.15rem] lg:h-[7.7rem]"
+        : "w-12 h-16 lg:w-20 lg:h-28";
+      const cardElement = createUiElement(
+      "button",
+      [
+        compact ? "reveal-card" : "hand-card",
+        sizeClass,
+        "rounded-xl flex flex-col justify-between items-center border relative overflow-hidden",
+        glowClass,
+        selected
+          ? `${palette.active} py-1 lg:py-2 z-20 cursor-pointer`
+          : `${palette.idle} py-1 z-10 cursor-pointer`,
+        highlighted && !selected ? "ring-2 ring-primary/70" : "",
+        dimmed ? "opacity-45" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")
+    );
 
-  cardElement.type = "button";
-  cardElement.dataset.cardNumber = String(card.number);
-  cardElement.dataset.penaltyTier = tier;
-  cardElement.dataset.penalty = String(card.penalty);
+      cardElement.type = "button";
+      cardElement.dataset.cardNumber = String(normalizedCard.number);
+      cardElement.dataset.penaltyTier = tier;
+      cardElement.dataset.penalty = String(normalizedCard.penalty);
 
   if (!compact) {
     cardElement.style.setProperty("--card-rotate", `${rotate}deg`);
@@ -363,18 +647,22 @@ function createHandCard(card, options = {}) {
     cardElement.classList.add("active-card");
   }
 
-  if (disabled) {
-    cardElement.disabled = true;
-  }
+    if (disabled) {
+      cardElement.disabled = true;
+    }
 
-  cardElement.appendChild(
-    createCardFace(card, {
-      compact,
-      selected,
-    })
-  );
+    cardElement.append(
+      createPenaltyIconRow(normalizedCard.penalty, selected, false),
+      createUiElement(
+        "span",
+        selected
+          ? `mt-auto mb-[0.22rem] lg:mb-[0.4rem] translate-y-[0.08rem] lg:translate-y-[0.14rem] font-headline font-bold text-xl lg:text-3xl ${palette.activeNumber}`
+          : `mt-auto mb-[0.2rem] lg:mb-[0.35rem] translate-y-[0.08rem] lg:translate-y-[0.14rem] font-headline font-bold text-lg lg:text-2xl ${palette.idleNumber}`,
+        String(normalizedCard.number)
+      )
+    );
 
-  return cardElement;
+    return cardElement;
 }
 
 function createHiddenPendingCard() {
@@ -443,11 +731,17 @@ function createDangerSlot(isActive) {
   return slot;
 }
 
+function createCleanupActor(label) {
+  const actor = createUiElement("div", "cleanup-actor");
+  actor.dataset.cleanerLabel = label;
+  return actor;
+}
+
 function createAppState(socket) {
-  return {
-    socket,
-    connectionStatus: "connecting",
-    playerId: null,
+    return {
+      socket,
+      connectionStatus: "connecting",
+      playerId: null,
     room: null,
     serverState: null,
     selectedCardNumber: null,
@@ -458,19 +752,28 @@ function createAppState(socket) {
     playLog: [],
     recentPlayedNumbers: [],
     highlightedRowIds: [],
+    cleanedRowIds: [],
+    cleanupAnnouncement: "",
     summaryOpen: false,
     highlightTimerId: null,
     processedLogIds: new Set(),
     avatarEditorOpen: false,
     avatarDraft: normalizeAvatar(DEFAULT_AVATAR),
     avatarSaving: false,
+    leavingGame: false,
+    isRestoringSession: false,
+    leaveGameModalOpen: false,
   };
 }
 
 function getUiElements() {
   return {
     app: document.querySelector("[data-game-app]"),
+    mainContent: document.getElementById("main-content"),
+    gameLogSidebar: document.getElementById("game-log-sidebar"),
+    gameSidebar: document.getElementById("game-sidebar"),
     connectionBadge: document.getElementById("connection-badge"),
+    leaveGameButton: document.getElementById("leave-game-button"),
     lobbyScreen: document.getElementById("lobby-screen"),
     roomScreen: document.getElementById("room-screen"),
     gameScreen: document.getElementById("game-screen"),
@@ -491,6 +794,7 @@ function getUiElements() {
     selfProfileName: document.getElementById("self-profile-name"),
     opponentSlots: Array.from(document.querySelectorAll("[data-opponent-slot]")),
     boardRows: document.getElementById("board-rows"),
+    cleanupAnnouncement: document.getElementById("cleanup-announcement"),
     playerHand: document.getElementById("player-hand"),
     currentTurnCards: document.getElementById("current-turn-cards"),
     submitButton: document.getElementById("submit-card-button"),
@@ -517,6 +821,10 @@ function getUiElements() {
     avatarSkinOptions: document.getElementById("avatar-skin-options"),
     avatarEyeOptions: document.getElementById("avatar-eye-options"),
     avatarMouthOptions: document.getElementById("avatar-mouth-options"),
+    leaveGameModal: document.getElementById("leave-game-modal"),
+    closeLeaveGameModalButton: document.getElementById("close-leave-game-modal-button"),
+    cancelLeaveGameButton: document.getElementById("cancel-leave-game-button"),
+    confirmLeaveGameButton: document.getElementById("confirm-leave-game-button"),
     staticBullIcons: Array.from(document.querySelectorAll("[data-static-bull-icon]")),
   };
 }
@@ -576,6 +884,20 @@ function withAck(socket, eventName, payload) {
   });
 }
 
+function hydrateFromStoredSession(appState, storedSession) {
+  if (!storedSession?.playerId || !storedSession?.roomCode) {
+    return;
+  }
+
+  appState.playerId = storedSession.playerId;
+  appState.room = storedSession.room ?? {
+    roomCode: storedSession.roomCode,
+  };
+  appState.serverState = storedSession.serverState ?? null;
+  appState.isRestoringSession = true;
+  appState.lobbyStatus = "진행 중인 게임 세션을 복구 중입니다.";
+}
+
 function renderConnectionBadge(appState, elements) {
   const badgeClassByStatus = {
     connected: "border-primary/25 bg-primary/10 text-primary",
@@ -593,6 +915,11 @@ function renderConnectionBadge(appState, elements) {
     (badgeClassByStatus[appState.connectionStatus] || badgeClassByStatus.connecting);
   elements.connectionBadge.textContent =
     labelByStatus[appState.connectionStatus] || labelByStatus.connecting;
+
+  if (elements.leaveGameButton) {
+    const canLeave = Boolean(appState.room || appState.serverState);
+    elements.leaveGameButton.classList.toggle("hidden", !canLeave);
+  }
 }
 
 function renderLobby(appState, elements) {
@@ -725,12 +1052,17 @@ function renderBoardRows(state, appState, elements) {
   elements.boardRows.innerHTML = "";
 
   state.rows.forEach((row) => {
+    const isCleanupRow = appState.cleanedRowIds.includes(row.id);
     const rowClasses = [
       "flex items-center gap-1.5 lg:gap-3 bg-surface-container-low p-2 lg:p-3 rounded-[1.75rem] w-full relative border border-outline-variant/5 shadow-inner",
     ];
 
     if (appState.highlightedRowIds.includes(row.id)) {
       rowClasses.push("row-capture-flash");
+    }
+
+    if (isCleanupRow) {
+      rowClasses.push("row-cleanup-sweep");
     }
 
     if (canChooseRow && allowedRowIds.has(row.id)) {
@@ -743,16 +1075,37 @@ function renderBoardRows(state, appState, elements) {
 
     const rowElement = createUiElement("div", rowClasses.join(" "));
     rowElement.dataset.rowId = String(row.id);
+    rowElement.dataset.cleanerLabel = appState.cleanedRowIds.includes(row.id)
+      ? appState.cleanupAnnouncement
+      : "";
 
     row.cards.forEach((card, index) => {
       const cardElement = createTableCard(card, rotations[index % rotations.length]);
 
       if (appState.recentPlayedNumbers.includes(card.number)) {
         cardElement.classList.add("recent-card-enter");
+
+        if (card.penalty <= 3) {
+          cardElement.classList.add("card-light-enter");
+        }
+
+        if (card.penalty >= 5) {
+          cardElement.classList.add("card-slam-enter");
+          cardElement.classList.add("card-floor-crack");
+        }
+
+        if (card.penalty >= 7) {
+          cardElement.classList.add("card-slam-enter-disaster");
+          cardElement.classList.add("card-floor-crack-disaster");
+        }
       }
 
       rowElement.appendChild(cardElement);
     });
+
+    if (isCleanupRow && appState.cleanupAnnouncement) {
+      rowElement.appendChild(createCleanupActor(appState.cleanupAnnouncement));
+    }
 
     for (let index = row.cards.length; index < 5; index += 1) {
       rowElement.appendChild(createEmptySlot(index === row.cards.length));
@@ -761,6 +1114,16 @@ function renderBoardRows(state, appState, elements) {
     rowElement.appendChild(createDangerSlot(row.cards.length >= 5));
     elements.boardRows.appendChild(rowElement);
   });
+}
+
+function renderCleanupAnnouncement(appState, elements) {
+  if (!elements.cleanupAnnouncement) {
+    return;
+  }
+
+  elements.cleanupAnnouncement.textContent = "";
+  elements.cleanupAnnouncement.classList.add("hidden");
+  elements.cleanupAnnouncement.classList.remove("cleanup-announcement-enter");
 }
 
 function renderCurrentTurnCards(state, elements) {
@@ -828,21 +1191,17 @@ function renderCurrentTurnCards(state, elements) {
 function renderPlayerHand(state, appState, elements) {
   const currentPlayer = getCurrentPlayer(state, appState.playerId);
   const hand = [...(currentPlayer?.hand ?? [])].sort((left, right) => left.number - right.number);
-  const handSize = hand.length;
   const isResolving = Boolean(state.round.pendingResolution);
 
   elements.playerHand.innerHTML = "";
 
-  hand.forEach((card, index) => {
-    const centerIndex = (handSize - 1) / 2;
-    const distanceFromCenter = index - centerIndex;
-
+  hand.forEach((card) => {
     elements.playerHand.appendChild(
       createHandCard(card, {
         selected: appState.selectedCardNumber === card.number,
-        rotate: distanceFromCenter * 3,
-        offset: Math.abs(distanceFromCenter) * 8,
-        overlap: index === 0 ? 0 : -16,
+        rotate: 0,
+        offset: 0,
+        overlap: 0,
         disabled: isResolving || state.round.phase === "finished",
       })
     );
@@ -1107,6 +1466,32 @@ function renderAvatarEditor(appState, elements) {
   elements.saveAvatarButton.disabled = appState.avatarSaving;
 }
 
+function renderLeaveGameModal(appState, elements) {
+  if (!elements.leaveGameModal) {
+    return;
+  }
+
+  if (appState.leaveGameModalOpen) {
+    elements.leaveGameModal.classList.remove("hidden");
+    elements.leaveGameModal.classList.add("flex");
+  } else {
+    elements.leaveGameModal.classList.add("hidden");
+    elements.leaveGameModal.classList.remove("flex");
+  }
+
+  if (elements.confirmLeaveGameButton) {
+    elements.confirmLeaveGameButton.disabled = Boolean(appState.leavingGame);
+  }
+
+  if (elements.cancelLeaveGameButton) {
+    elements.cancelLeaveGameButton.disabled = Boolean(appState.leavingGame);
+  }
+
+  if (elements.closeLeaveGameModalButton) {
+    elements.closeLeaveGameModalButton.disabled = Boolean(appState.leavingGame);
+  }
+}
+
 function renderPlayLog(appState, elements) {
   elements.playLog.innerHTML = "";
 
@@ -1208,6 +1593,7 @@ function renderRoundSummary(state, appState, elements) {
 function renderGame(state, appState, elements) {
   renderOpponentHud(state, appState, elements);
   renderBoardRows(state, appState, elements);
+  renderCleanupAnnouncement(appState, elements);
   renderCurrentTurnCards(state, elements);
   renderPlayerHand(state, appState, elements);
   renderStatus(state, appState, elements);
@@ -1227,10 +1613,13 @@ function renderApp(appState, elements) {
   elements.lobbyScreen.classList.toggle("hidden", !showLobby);
   elements.roomScreen.classList.toggle("hidden", !showRoom);
   elements.gameScreen.classList.toggle("hidden", !showGame);
+  elements.gameLogSidebar?.classList.toggle("lg:block", showGame);
+  elements.gameSidebar?.classList.toggle("lg:block", showGame);
 
   renderLobby(appState, elements);
   renderRoom(appState, elements);
   renderAvatarEditor(appState, elements);
+  renderLeaveGameModal(appState, elements);
 
   if (showGame && appState.serverState) {
     renderGame(appState.serverState, appState, elements);
@@ -1243,6 +1632,8 @@ function renderApp(appState, elements) {
 function resetHighlightState(appState) {
   appState.recentPlayedNumbers = [];
   appState.highlightedRowIds = [];
+  appState.cleanedRowIds = [];
+  appState.cleanupAnnouncement = "";
 
   if (appState.highlightTimerId) {
     window.clearTimeout(appState.highlightTimerId);
@@ -1278,6 +1669,10 @@ function buildLogEntry(state, step) {
   };
 }
 
+function shouldTriggerCleanupMotion(step) {
+  return step?.placement === "captured-full-row" || step?.placement === "replaced-smallest";
+}
+
 function applyStateDiff(appState, nextState) {
   const previousState = appState.serverState;
   const previousResolvedCount = previousState?.round?.resolvedCards?.length ?? 0;
@@ -1310,9 +1705,13 @@ function applyStateDiff(appState, nextState) {
 
     if (freshSteps.length) {
       const latestStep = freshSteps[freshSteps.length - 1];
+      const cleanupTriggered = shouldTriggerCleanupMotion(latestStep);
+      const cleanerName = getPlayerName(nextState, latestStep.playerId);
 
       appState.recentPlayedNumbers = [latestStep.card.number];
       appState.highlightedRowIds = latestStep.penaltyPointsGained > 0 ? [latestStep.rowId] : [];
+      appState.cleanedRowIds = cleanupTriggered ? [latestStep.rowId] : [];
+      appState.cleanupAnnouncement = cleanupTriggered ? `청소부 ${cleanerName}!` : "";
 
       if (appState.highlightTimerId) {
         window.clearTimeout(appState.highlightTimerId);
@@ -1321,9 +1720,11 @@ function applyStateDiff(appState, nextState) {
       appState.highlightTimerId = window.setTimeout(() => {
         appState.recentPlayedNumbers = [];
         appState.highlightedRowIds = [];
+        appState.cleanedRowIds = [];
+        appState.cleanupAnnouncement = "";
         appState.highlightTimerId = null;
         renderApp(appState, getUiElements());
-      }, 850);
+      }, cleanupTriggered ? 3200 : 850);
     }
   }
 
@@ -1488,6 +1889,63 @@ async function handleRestartRound(appState, elements) {
   renderApp(appState, elements);
 }
 
+async function handleResumeSession(appState, elements) {
+  if (!appState.playerId || !appState.room?.roomCode) {
+    return;
+  }
+
+  const response = await withAck(appState.socket, "resumeSession", {
+    roomCode: appState.room.roomCode,
+    playerId: appState.playerId,
+  });
+
+  if (!response.ok) {
+    clearActiveSession();
+    appState.playerId = null;
+    appState.room = null;
+    appState.serverState = null;
+    appState.isRestoringSession = false;
+    appState.lobbyStatus = "저장된 세션을 복구하지 못했습니다. 다시 입장해 주세요.";
+    renderApp(appState, elements);
+    return;
+  }
+
+  appState.playerId = response.playerId;
+  appState.room = response.room;
+  appState.isRestoringSession = false;
+  appState.lobbyStatus = "진행 중인 게임으로 다시 연결되었습니다.";
+  renderApp(appState, elements);
+}
+
+function openLeaveGameModal(appState, elements) {
+  appState.leaveGameModalOpen = true;
+  renderApp(appState, elements);
+}
+
+function closeLeaveGameModal(appState, elements) {
+  appState.leaveGameModalOpen = false;
+  renderApp(appState, elements);
+}
+
+async function handleLeaveGame(appState, elements) {
+  if (appState.leavingGame) {
+    return;
+  }
+
+  appState.leavingGame = true;
+  renderApp(appState, elements);
+
+  const roomCode = appState.room?.roomCode;
+
+  if (roomCode && appState.socket) {
+    appState.socket.emit("leaveRoom", { roomCode }, () => {});
+  }
+
+  clearActiveSession();
+  resetAppToLobby(appState);
+  renderApp(appState, elements);
+}
+
 function openAvatarEditor(appState, elements) {
   if (!canEditAvatar(appState)) {
     return;
@@ -1548,10 +2006,17 @@ function initializeApp(socket) {
   }
 
   const appState = createAppState(socket);
+  const storedSession = loadActiveSession();
+
+  if (storedSession) {
+    hydrateFromStoredSession(appState, storedSession);
+  }
+
   hydrateStaticBullIcons(elements);
 
   const rerender = () => {
     renderApp(appState, elements);
+    saveActiveSession(appState);
   };
 
   socket.on("connect", () => {
@@ -1566,8 +2031,15 @@ function initializeApp(socket) {
     rerender();
   });
 
+  socket.on("connect", () => {
+    if (appState.isRestoringSession) {
+      handleResumeSession(appState, elements);
+    }
+  });
+
   socket.on("roomUpdated", (room) => {
     appState.room = room;
+    appState.isRestoringSession = false;
 
     if (room.hasGameStarted) {
       appState.roomStatus = "게임이 시작되었습니다.";
@@ -1594,6 +2066,7 @@ function initializeApp(socket) {
 
     applyStateDiff(appState, state);
     appState.serverState = state;
+    appState.isRestoringSession = false;
     appState.transientStatus = "";
     appState.pendingSubmit = false;
     rerender();
@@ -1641,7 +2114,29 @@ function initializeApp(socket) {
   });
 
   elements.leaveRoomButton.addEventListener("click", () => {
-    window.location.reload();
+    openLeaveGameModal(appState, elements);
+  });
+
+  elements.leaveGameButton?.addEventListener("click", () => {
+    openLeaveGameModal(appState, elements);
+  });
+
+  elements.closeLeaveGameModalButton?.addEventListener("click", () => {
+    closeLeaveGameModal(appState, elements);
+  });
+
+  elements.cancelLeaveGameButton?.addEventListener("click", () => {
+    closeLeaveGameModal(appState, elements);
+  });
+
+  elements.confirmLeaveGameButton?.addEventListener("click", () => {
+    handleLeaveGame(appState, elements);
+  });
+
+  elements.leaveGameModal?.addEventListener("click", (event) => {
+    if (event.target === elements.leaveGameModal) {
+      closeLeaveGameModal(appState, elements);
+    }
   });
 
   elements.roomPlayerList.addEventListener("click", (event) => {
@@ -1763,4 +2258,4 @@ function initializeApp(socket) {
   rerender();
 }
 
-export { initializeApp, renderGame };
+export { initializeApp, renderGame, getPenaltyForCardNumber };

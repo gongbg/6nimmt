@@ -22,6 +22,7 @@ const PORT = Number(process.env.PORT) || 3000;
 const MAX_PLAYERS_PER_ROOM = 4;
 const TURN_STEP_DELAY_MS = 900;
 const AI_PLACEMENT_DELAY_MS = 1500;
+const RECONNECT_GRACE_MS = 5 * 60 * 1000;
 const AVATAR_SKIN_COLORS = [
   "#ffb59f",
   "#f4c27b",
@@ -106,6 +107,7 @@ function createPlayer({ socketId = null, nickname, isBot = false }) {
     nickname,
     isBot,
     avatar: isBot ? null : normalizeAvatarInput(null, avatarSeed),
+    disconnectTimerId: null,
   };
 }
 
@@ -131,6 +133,7 @@ function getRoomPlayersForState(room) {
     nickname: player.nickname,
     isBot: player.isBot,
     avatar: player.avatar ? { ...player.avatar } : null,
+    connected: Boolean(player.isBot || player.socketId),
   }));
 }
 
@@ -434,6 +437,55 @@ function removePlayerFromRoom(room, socketId) {
   return removedPlayer;
 }
 
+function removePlayerById(room, playerId) {
+  const playerIndex = room.players.findIndex((player) => player.id === playerId);
+
+  if (playerIndex === -1) {
+    return null;
+  }
+
+  const [removedPlayer] = room.players.splice(playerIndex, 1);
+
+  if (removedPlayer.disconnectTimerId) {
+    clearTimeout(removedPlayer.disconnectTimerId);
+    removedPlayer.disconnectTimerId = null;
+  }
+
+  if (room.gameState) {
+    room.gameState.removePlayer(removedPlayer.id);
+  }
+
+  if (room.hostPlayerId === removedPlayer.id && room.players.length > 0) {
+    room.hostPlayerId = room.players[0].id;
+  }
+
+  if (room.manualChoice?.playerId === removedPlayer.id) {
+    room.manualChoice = null;
+  }
+
+  return removedPlayer;
+}
+
+function scheduleDisconnectedPlayerRemoval(room, playerId) {
+  const player = room.players.find((currentPlayer) => currentPlayer.id === playerId);
+
+  if (!player || player.isBot) {
+    return;
+  }
+
+  if (player.disconnectTimerId) {
+    clearTimeout(player.disconnectTimerId);
+  }
+
+  player.disconnectTimerId = setTimeout(() => {
+    player.disconnectTimerId = null;
+    removePlayerById(room, playerId);
+    emitRoomSummary(room);
+    emitStateToRoom(room);
+    maybeDeleteRoom(room.code);
+  }, RECONNECT_GRACE_MS);
+}
+
 function syncPlayerAvatar(room, playerId, avatar) {
   const roomPlayer = room.players.find((player) => player.id === playerId);
 
@@ -591,6 +643,45 @@ io.on("connection", (socket) => {
       callback({
         ok: true,
         roomCode: room.code,
+        playerId: player.id,
+        room: buildRoomSummary(room),
+      });
+    } catch (error) {
+      callback({
+        ok: false,
+        error: error.message,
+      });
+    }
+  });
+
+  socket.on("resumeSession", ({ roomCode, playerId } = {}, callback = () => {}) => {
+    try {
+      const normalizedRoomCode = String(roomCode || "").trim().toUpperCase();
+      const normalizedPlayerId = String(playerId || "").trim();
+      const room = rooms[normalizedRoomCode];
+
+      if (!room) {
+        throw new Error("Room not found.");
+      }
+
+      const player = room.players.find((currentPlayer) => currentPlayer.id === normalizedPlayerId);
+
+      if (!player) {
+        throw new Error("Player session not found.");
+      }
+
+      if (player.disconnectTimerId) {
+        clearTimeout(player.disconnectTimerId);
+        player.disconnectTimerId = null;
+      }
+
+      player.socketId = socket.id;
+      socket.join(room.code);
+
+      emitRoomSummary(room);
+      emitStateToRoom(room);
+      callback({
+        ok: true,
         playerId: player.id,
         room: buildRoomSummary(room),
       });
@@ -762,6 +853,37 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("leaveRoom", ({ roomCode } = {}, callback = () => {}) => {
+    try {
+      const normalizedRoomCode = String(roomCode || "").trim().toUpperCase();
+      const room = rooms[normalizedRoomCode];
+
+      if (!room) {
+        callback({ ok: true });
+        return;
+      }
+
+      const player = room.players.find((currentPlayer) => currentPlayer.socketId === socket.id);
+
+      if (!player) {
+        callback({ ok: true });
+        return;
+      }
+
+      removePlayerById(room, player.id);
+      socket.leave(room.code);
+      emitRoomSummary(room);
+      emitStateToRoom(room);
+      maybeDeleteRoom(room.code);
+      callback({ ok: true });
+    } catch (error) {
+      callback({
+        ok: false,
+        error: error.message,
+      });
+    }
+  });
+
   socket.on("chooseRow", ({ roomCode, rowId } = {}, callback = () => {}) => {
     try {
       const normalizedRoomCode = String(roomCode || "").trim().toUpperCase();
@@ -833,13 +955,19 @@ io.on("connection", (socket) => {
       return;
     }
 
-    removePlayerFromRoom(room, socket.id);
+    const disconnectedPlayer = room.players.find((player) => player.socketId === socket.id);
+
+    if (!disconnectedPlayer) {
+      return;
+    }
+
+    disconnectedPlayer.socketId = null;
+    scheduleDisconnectedPlayerRemoval(room, disconnectedPlayer.id);
     emitRoomSummary(room);
     emitStateToRoom(room);
-    maybeDeleteRoom(room.code);
   });
 });
 
 httpServer.listen(PORT, () => {
-  console.log(`6 Nimmt server listening on http://localhost:${PORT}`);
+console.log(`Six Bugs server listening on http://localhost:${PORT}`);
 });
