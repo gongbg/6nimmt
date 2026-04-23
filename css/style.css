@@ -24,6 +24,7 @@
   transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
   will-change: transform;
   isolation: isolate;
+  transform-origin: center bottom;
 }
 
 .hand-card:hover {
@@ -42,6 +43,14 @@
 #player-hand > * {
   flex-shrink: 1;
   min-width: 0;
+}
+
+#player-hand {
+  overflow: visible;
+}
+
+#game-log-sidebar > .rounded-\[1\.5rem\] > h3:first-of-type {
+  display: none;
 }
 
 .bull-icon {

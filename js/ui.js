@@ -29,6 +29,15 @@ const DEFAULT_AVATAR = {
   mouthType: AVATAR_MOUTH_TYPES[0],
 };
 const ACTIVE_SESSION_STORAGE_KEY = "sixnimmt.activeSession";
+const CLEANUP_ANNOUNCEMENT_BUILDERS = [
+  (name) => `청소부 ${name}`,
+  (name) => `바닥쓸기장인 ${name}`,
+  (name) => `인간청소기 ${name}`,
+  (name) => `다 ${name} 거야!!!!`,
+  (name) => `인간 다이슨 ${name}`,
+  (name) => `환경미화원 ${name}`,
+  (name) => `배고픈 ${name}`,
+];
 
 const BULL_HEAD_SVG = `
   <svg viewBox="0 0 64 64" aria-hidden="true" class="bull-icon" fill="currentColor">
@@ -66,6 +75,8 @@ function saveActiveSession(appState) {
     roomCode: appState.room.roomCode,
     room: appState.room,
     serverState: appState.serverState,
+    playLog: appState.playLog,
+    processedLogIds: Array.from(appState.processedLogIds ?? []),
     savedAt: Date.now(),
   };
 
@@ -217,6 +228,21 @@ function getPenaltyTier(penalty) {
   }
 
   return "safe";
+}
+
+function buildCleanupAnnouncement(step, cleanerName, roundNumber, turnNumber) {
+  const seed = `${roundNumber}-${turnNumber}-${step?.playerId ?? ""}-${step?.card?.number ?? ""}-${step?.rowId ?? ""}`;
+  let hash = 0;
+
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = (hash * 31 + seed.charCodeAt(index)) >>> 0;
+  }
+
+  const formatter =
+    CLEANUP_ANNOUNCEMENT_BUILDERS[
+      hash % CLEANUP_ANNOUNCEMENT_BUILDERS.length
+    ] ?? CLEANUP_ANNOUNCEMENT_BUILDERS[0];
+  return formatter(cleanerName);
 }
 
 function getPenaltyForCardNumber(number) {
@@ -527,7 +553,7 @@ function createTableCard(card, rotateClass = "") {
     "div",
     [
       "table-card",
-      "w-12 h-16 lg:w-20 lg:h-28 rounded-xl border flex flex-col justify-between items-center py-1",
+      "w-12 h-16 lg:w-[4.5rem] lg:h-[6.35rem] rounded-xl border flex flex-col justify-between items-center py-1 lg:py-1.5",
       palette.container,
       glowClass,
       rotateClass,
@@ -540,9 +566,9 @@ function createTableCard(card, rotateClass = "") {
   cardElement.dataset.penalty = String(normalizedCard.penalty);
   cardElement.append(
     createPenaltyIconRow(normalizedCard.penalty, false, false),
-    createUiElement(
-      "span",
-      `mt-auto mb-[0.2rem] lg:mb-[0.35rem] translate-y-[0.08rem] lg:translate-y-[0.14rem] font-headline font-bold text-lg lg:text-2xl ${palette.number}`,
+      createUiElement(
+        "span",
+      `mt-auto mb-[0.16rem] lg:mb-[0.26rem] translate-y-[0.06rem] lg:translate-y-[0.1rem] font-headline font-bold text-lg lg:text-[1.55rem] ${palette.number}`,
       String(normalizedCard.number)
     )
   );
@@ -610,11 +636,11 @@ function createHandCard(card, options = {}) {
 
     const sizeClass = compact
       ? selected
-        ? "w-[3.25rem] h-[4.85rem] lg:w-[5.15rem] lg:h-[7.7rem]"
-        : "w-12 h-16 lg:w-20 lg:h-28"
+        ? "w-[2.9rem] h-[4.25rem] lg:w-[3.9rem] lg:h-[5.8rem]"
+        : "w-10 h-14 lg:w-[3.5rem] lg:h-[5rem]"
       : selected
         ? "w-[3.25rem] h-[4.85rem] lg:w-[5.15rem] lg:h-[7.7rem]"
-        : "w-12 h-16 lg:w-20 lg:h-28";
+        : "w-12 h-16 lg:w-[4.5rem] lg:h-[6.35rem]";
       const cardElement = createUiElement(
       "button",
       [
@@ -623,8 +649,8 @@ function createHandCard(card, options = {}) {
         "rounded-xl flex flex-col justify-between items-center border relative overflow-hidden",
         glowClass,
         selected
-          ? `${palette.active} py-1 lg:py-2 z-20 cursor-pointer`
-          : `${palette.idle} py-1 z-10 cursor-pointer`,
+          ? `${palette.active} py-1 lg:py-1.5 z-20 cursor-pointer`
+          : `${palette.idle} py-1 lg:py-1.5 z-10 cursor-pointer`,
         highlighted && !selected ? "ring-2 ring-primary/70" : "",
         dimmed ? "opacity-45" : "",
       ]
@@ -656,8 +682,8 @@ function createHandCard(card, options = {}) {
       createUiElement(
         "span",
         selected
-          ? `mt-auto mb-[0.22rem] lg:mb-[0.4rem] translate-y-[0.08rem] lg:translate-y-[0.14rem] font-headline font-bold text-xl lg:text-3xl ${palette.activeNumber}`
-          : `mt-auto mb-[0.2rem] lg:mb-[0.35rem] translate-y-[0.08rem] lg:translate-y-[0.14rem] font-headline font-bold text-lg lg:text-2xl ${palette.idleNumber}`,
+          ? `mt-auto mb-[0.18rem] lg:mb-[0.28rem] translate-y-[0.06rem] lg:translate-y-[0.1rem] font-headline font-bold text-lg lg:text-[1.65rem] ${palette.activeNumber}`
+          : `mt-auto mb-[0.16rem] lg:mb-[0.24rem] translate-y-[0.06rem] lg:translate-y-[0.1rem] font-headline font-bold text-base lg:text-[1.45rem] ${palette.idleNumber}`,
         String(normalizedCard.number)
       )
     );
@@ -668,12 +694,12 @@ function createHandCard(card, options = {}) {
 function createHiddenPendingCard() {
   const cardElement = createUiElement(
     "div",
-    "reveal-card w-11 h-14 sm:w-12 sm:h-16 rounded-xl border border-outline-variant/20 bg-gradient-to-b from-surface-container-highest to-surface-container-lowest shadow-[0_10px_28px_-8px_rgba(0,0,0,0.45)] relative flex items-center justify-center"
+    "reveal-card w-10 h-14 lg:w-[3.5rem] lg:h-[5rem] rounded-xl border border-outline-variant/20 bg-gradient-to-b from-surface-container-highest to-surface-container-lowest shadow-[0_10px_28px_-8px_rgba(0,0,0,0.45)] relative flex items-center justify-center"
   );
   cardElement.appendChild(
     createUiElement(
       "span",
-      "font-headline text-xl sm:text-2xl font-black text-primary/75",
+      "font-headline text-lg lg:text-xl font-black text-primary/75",
       "?"
     )
   );
@@ -684,7 +710,7 @@ function createEmptySlot(isNextSlot) {
   if (isNextSlot) {
     const slot = createUiElement(
       "div",
-      "w-11 h-14 sm:w-12 sm:h-16 lg:w-[4.5rem] lg:h-24 rounded-xl border-2 border-primary/40 border-dashed bg-primary/10 flex items-center justify-center relative"
+      "w-11 h-14 sm:w-12 sm:h-16 lg:w-[4rem] lg:h-[5.6rem] rounded-xl border-2 border-primary/40 border-dashed bg-primary/10 flex items-center justify-center relative"
     );
     slot.appendChild(
       createUiElement(
@@ -698,7 +724,7 @@ function createEmptySlot(isNextSlot) {
 
   return createUiElement(
     "div",
-    "w-11 h-14 sm:w-12 sm:h-16 lg:w-[4.5rem] lg:h-24 rounded-xl border-2 border-outline-variant/20 border-dashed opacity-50"
+    "w-11 h-14 sm:w-12 sm:h-16 lg:w-[4rem] lg:h-[5.6rem] rounded-xl border-2 border-outline-variant/20 border-dashed opacity-50"
   );
 }
 
@@ -706,8 +732,8 @@ function createDangerSlot(isActive) {
   const slot = createUiElement(
     "div",
     isActive
-      ? "w-11 h-14 sm:w-12 sm:h-16 lg:w-[4.5rem] lg:h-24 rounded-xl bg-error-container/20 border-2 border-error/50 border-dashed flex items-center justify-center animate-pulse relative overflow-hidden shadow-[0_0_15px_rgba(255,180,171,0.3)]"
-      : "w-11 h-14 sm:w-12 sm:h-16 lg:w-[4.5rem] lg:h-24 rounded-xl border-2 border-error-container/30 border-dashed bg-error-container/5 flex items-center justify-center relative overflow-hidden"
+      ? "w-11 h-14 sm:w-12 sm:h-16 lg:w-[4rem] lg:h-[5.6rem] rounded-xl bg-error-container/20 border-2 border-error/50 border-dashed flex items-center justify-center animate-pulse relative overflow-hidden shadow-[0_0_15px_rgba(255,180,171,0.3)]"
+      : "w-11 h-14 sm:w-12 sm:h-16 lg:w-[4rem] lg:h-[5.6rem] rounded-xl border-2 border-error-container/30 border-dashed bg-error-container/5 flex items-center justify-center relative overflow-hidden"
   );
   const stripe = createUiElement(
     "div",
@@ -806,6 +832,9 @@ function getUiElements() {
     deckCount: document.getElementById("deck-count"),
     selectionIndicator: document.getElementById("selection-indicator"),
     submissionStatusList: document.getElementById("submission-status-list"),
+    chatMessages: document.getElementById("chat-messages"),
+    chatInput: document.getElementById("chat-input"),
+    chatSendButton: document.getElementById("chat-send-button"),
     playLog: document.getElementById("play-log"),
     modal: document.getElementById("round-summary-modal"),
     summaryScoreboard: document.getElementById("summary-scoreboard"),
@@ -834,6 +863,28 @@ function hydrateStaticBullIcons(elements) {
     target.innerHTML = "";
     target.appendChild(createBullIcon("text-current"));
   });
+}
+
+function syncSectionLabels(elements) {
+  const revealSection = elements.currentTurnCards?.parentElement;
+  const revealHeading = revealSection?.querySelector("h3");
+  const revealCaption = revealSection?.querySelector("span.text-xs");
+  if (revealHeading) {
+    revealHeading.textContent = "카드공개";
+  }
+  if (revealCaption) {
+    revealCaption.textContent = "이번 턴에 공개된 카드만 표시됩니다.";
+  }
+
+  const logSection = elements.playLog?.parentElement;
+  const logHeading = logSection?.querySelector("h3");
+  const logCaption = logSection?.querySelector("span.text-xs");
+  if (logHeading) {
+    logHeading.textContent = "카드 로그";
+  }
+  if (logCaption) {
+    logCaption.textContent = "최근 카드 로그는 최대 4개까지만 표시됩니다.";
+  }
 }
 
 function getCurrentPlayer(state, playerId) {
@@ -894,6 +945,12 @@ function hydrateFromStoredSession(appState, storedSession) {
     roomCode: storedSession.roomCode,
   };
   appState.serverState = storedSession.serverState ?? null;
+  appState.playLog = (Array.isArray(storedSession.playLog) ? storedSession.playLog : []).slice(0, 4);
+  appState.processedLogIds = new Set(
+    Array.isArray(storedSession.processedLogIds)
+      ? storedSession.processedLogIds
+      : appState.playLog.map((entry) => entry?.id).filter(Boolean)
+  );
   appState.isRestoringSession = true;
   appState.lobbyStatus = "진행 중인 게임 세션을 복구 중입니다.";
 }
@@ -1052,6 +1109,7 @@ function renderBoardRows(state, appState, elements) {
   elements.boardRows.innerHTML = "";
 
   state.rows.forEach((row) => {
+    const rowPenaltyTotal = row.cards.reduce((total, card) => total + (card.penalty ?? 0), 0);
     const isCleanupRow = appState.cleanedRowIds.includes(row.id);
     const rowClasses = [
       "flex items-center gap-1.5 lg:gap-3 bg-surface-container-low p-2 lg:p-3 rounded-[1.75rem] w-full relative border border-outline-variant/5 shadow-inner",
@@ -1078,6 +1136,13 @@ function renderBoardRows(state, appState, elements) {
     rowElement.dataset.cleanerLabel = appState.cleanedRowIds.includes(row.id)
       ? appState.cleanupAnnouncement
       : "";
+
+    const rowPenaltyBadge = createUiElement(
+      "div",
+      "absolute right-3 top-2 z-10 rounded-full border border-outline-variant/20 bg-surface-container-highest/90 px-2.5 py-1 text-[11px] font-black text-primary flex items-center gap-1 shadow-[0_8px_20px_-14px_rgba(0,0,0,0.55)]"
+    );
+    rowPenaltyBadge.append(createBullIcon("text-current text-[13px]"), document.createTextNode(String(rowPenaltyTotal)));
+    rowElement.appendChild(rowPenaltyBadge);
 
     row.cards.forEach((card, index) => {
       const cardElement = createTableCard(card, rotations[index % rotations.length]);
@@ -1141,7 +1206,7 @@ function renderCurrentTurnCards(state, elements) {
     return;
   }
 
-  const wrap = createUiElement("div", "flex flex-wrap items-end gap-3");
+  const wrap = createUiElement("div", "flex flex-wrap items-end gap-2 lg:gap-2.5");
 
   pendingResolution.orderedCards.forEach((entry, index) => {
     const isResolved = index < pendingResolution.currentStepIndex;
@@ -1149,8 +1214,8 @@ function renderCurrentTurnCards(state, elements) {
     const item = createUiElement(
       "div",
       [
-        "flex flex-col items-center gap-2 rounded-2xl border border-outline-variant/15 px-3 py-3 transition-all",
-        isActive ? "bg-primary/10 shadow-[0_0_18px_rgba(255,181,159,0.18)]" : "bg-surface-container-lowest/70",
+        "flex flex-col items-center gap-1.5 rounded-2xl border border-outline-variant/15 px-2.5 py-2 transition-all",
+        isActive ? "bg-primary/10 shadow-[0_0_16px_rgba(255,181,159,0.18)]" : "bg-surface-container-lowest/70",
       ]
         .filter(Boolean)
         .join(" ")
@@ -1178,7 +1243,7 @@ function renderCurrentTurnCards(state, elements) {
       cardElement,
       createUiElement(
         "div",
-        "text-xs font-bold tracking-wide text-on-surface-variant",
+        "text-[11px] font-bold tracking-wide text-on-surface-variant",
         getPlayerName(state, entry.playerId)
       )
     );
@@ -1261,6 +1326,166 @@ function renderSubmissionStatus(state, elements) {
     );
     elements.submissionStatusList.appendChild(row);
   });
+}
+
+function renderPlayerStatePanel(state, appState, elements) {
+  if (!elements.submissionStatusList) {
+    return;
+  }
+
+  const statuses = state.submissionStatus ?? [];
+  elements.submissionStatusList.innerHTML = "";
+
+  if (!statuses.length || !Array.isArray(state.players)) {
+    elements.submissionStatusList.appendChild(
+      createUiElement(
+        "div",
+        "rounded-2xl border border-outline-variant/15 bg-surface-container-lowest/60 px-4 py-3 text-sm text-on-surface-variant",
+        "?꾩쭅 ?쒖텧 ?뺣낫媛 ?놁뒿?덈떎."
+      )
+    );
+    return;
+  }
+
+  const statusByPlayerId = new Map(statuses.map((entry) => [entry.playerId, entry]));
+  const orderedPlayers = [
+    ...state.players.filter((player) => player.id === appState.playerId),
+    ...state.players.filter((player) => player.id !== appState.playerId),
+  ];
+
+  orderedPlayers.forEach((player, index) => {
+    const entry = statusByPlayerId.get(player.id) ?? {
+      playerId: player.id,
+      nickname: player.nickname,
+      isBot: player.isBot,
+      submitted: false,
+      waitingForPlacement: false,
+    };
+    const isSelf = player.id === appState.playerId;
+    const penaltyPoints = getDisplayPenaltyPoints(player, state.round);
+    const submitted = isSelf ? entry.submitted || appState.pendingSubmit : entry.submitted;
+    const badgeClass = entry.waitingForPlacement
+      ? "border-primary/25 bg-primary/10 text-primary"
+      : submitted
+        ? "border-secondary/25 bg-secondary/10 text-secondary"
+        : "border-outline-variant/20 bg-surface-container-lowest text-on-surface-variant";
+    const badgeText = entry.waitingForPlacement
+      ? "행 선택 중"
+      : submitted
+        ? "제출 완료"
+        : "고민 중";
+
+    const row = createUiElement(
+      "div",
+      [
+        "rounded-2xl border border-outline-variant/15 bg-surface-container-lowest/65 px-3 py-3",
+        "flex items-center justify-between gap-3",
+        isSelf ? "ring-1 ring-primary/25" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")
+    );
+
+    const left = createUiElement("div", "min-w-0 flex items-center gap-3");
+    const avatarWrap = createUiElement("div", "h-10 w-10 shrink-0");
+    avatarWrap.appendChild(
+      player.isBot
+        ? createBotAvatarElement(index, "h-10 w-10")
+        : createAvatarElement(player.avatar, { sizeClass: "h-10 w-10" })
+    );
+
+    const textWrap = createUiElement("div", "min-w-0 flex-1");
+    const titleRow = createUiElement("div", "flex items-center gap-2");
+    titleRow.appendChild(
+      createUiElement(
+        "span",
+        "truncate font-headline text-sm font-black text-on-surface",
+        player.nickname
+      )
+    );
+
+    if (isSelf) {
+      titleRow.appendChild(
+        createUiElement(
+          "span",
+          "rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-primary",
+          "YOU"
+        )
+      );
+    }
+
+    const meta = createUiElement("div", "mt-1");
+    const penaltyMeta = createUiElement(
+      "span",
+      "inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-sm font-black text-primary shadow-[0_8px_18px_-14px_rgba(255,112,67,0.5)]"
+    );
+    penaltyMeta.append(
+      createBullIcon("text-primary text-[16px]"),
+      createUiElement("span", "text-[15px] leading-none", String(penaltyPoints))
+    );
+    textWrap.append(titleRow, meta);
+    meta.append(penaltyMeta);
+    left.append(avatarWrap, textWrap);
+
+    const right = createUiElement("div", "shrink-0 flex flex-col items-end gap-2");
+    right.appendChild(
+      createUiElement(
+        "span",
+        `inline-flex items-center justify-center whitespace-nowrap rounded-full border px-2.5 py-1.5 text-[11px] leading-none font-black ${badgeClass}`,
+        badgeText
+      )
+    );
+
+    row.append(left, right);
+    elements.submissionStatusList.appendChild(row);
+  });
+}
+
+function renderChatPanel(appState, elements) {
+  if (!elements.chatMessages || !elements.chatInput || !elements.chatSendButton) {
+    return;
+  }
+
+  const chatMessages = Array.isArray(appState.room?.chatMessages) ? appState.room.chatMessages : [];
+  elements.chatMessages.innerHTML = "";
+
+  if (!chatMessages.length) {
+    elements.chatMessages.appendChild(
+      createUiElement(
+        "div",
+        "rounded-2xl border border-outline-variant/15 bg-surface-container-high/40 px-3 py-3 text-sm text-on-surface-variant",
+        "아직 채팅이 없습니다."
+      )
+    );
+  } else {
+    chatMessages.forEach((entry) => {
+      const item = createUiElement(
+        "div",
+        "rounded-2xl border border-outline-variant/10 bg-surface-container-high/35 px-3 py-2.5 mb-2 last:mb-0"
+      );
+      const authorRow = createUiElement("div", "flex items-center justify-between gap-2");
+      const name = createUiElement(
+        "span",
+        entry.playerId === appState.playerId
+          ? "text-xs font-black text-primary"
+          : "text-xs font-black text-on-surface",
+        entry.nickname || "Player"
+      );
+      const time = createUiElement(
+        "span",
+        "text-[11px] text-on-surface-variant/70",
+        entry.createdAt ? new Date(entry.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""
+      );
+      const message = createUiElement("p", "mt-1 text-sm leading-5 text-on-surface break-words", entry.message || "");
+      authorRow.append(name, time);
+      item.append(authorRow, message);
+      elements.chatMessages.appendChild(item);
+    });
+  }
+
+  elements.chatSendButton.disabled = !appState.room?.roomCode;
+  elements.chatInput.disabled = !appState.room?.roomCode;
+  elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
 }
 
 function buildStatusMessage(state, appState) {
@@ -1507,29 +1732,65 @@ function renderPlayLog(appState, elements) {
   }
 
   appState.playLog.forEach((entry, index) => {
+    const accentClass =
+      entry.placement === "captured-full-row" || entry.placement === "replaced-smallest"
+        ? "border-primary/30 bg-primary/10 text-primary"
+        : "border-outline-variant/20 bg-surface-container-high text-on-surface-variant";
+    const accentText =
+      entry.placement === "captured-full-row"
+        ? "줄 획득"
+        : entry.placement === "replaced-smallest"
+          ? "강제 선택"
+          : "배치 완료";
     const card = createUiElement(
       "article",
       [
-        "rounded-2xl border border-outline-variant/15 bg-surface-container-lowest/65 px-4 py-3",
+        "rounded-2xl border border-outline-variant/15 bg-surface-container-lowest/65 px-4 py-3 shadow-[0_10px_26px_-18px_rgba(0,0,0,0.55)]",
         index === 0 ? "log-entry-enter" : "",
       ]
         .filter(Boolean)
         .join(" ")
     );
-    const top = createUiElement("div", "flex items-center justify-between gap-3");
-    top.append(
+    const top = createUiElement("div", "flex items-start justify-between gap-3");
+    const left = createUiElement("div", "min-w-0");
+    left.append(
+      createUiElement("div", "text-[11px] font-black uppercase tracking-[0.22em] text-primary/70", entry.playerName),
+      createUiElement("div", "mt-1 flex items-center gap-2 flex-wrap", "")
+    );
+    const meta = left.lastChild;
+    meta.append(
       createUiElement(
-        "div",
-        "font-headline font-bold text-on-surface",
-        `${entry.playerName} played ${entry.cardNumber}`
+        "span",
+        "rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-sm font-headline font-black text-primary",
+        `#${entry.cardNumber}`
       ),
       createUiElement(
         "span",
-        "rounded-full px-3 py-1 text-xs font-black border border-outline-variant/20 bg-surface-container-high text-primary",
-        `Row ${entry.rowId}`
+        "rounded-full border border-outline-variant/20 bg-surface-container-high px-3 py-1 text-xs font-black text-on-surface",
+        `${entry.rowId}번 줄`
+      ),
+      createUiElement(
+        "span",
+        `rounded-full border px-3 py-1 text-xs font-black ${accentClass}`,
+        accentText
       )
     );
-    card.append(top, createUiElement("p", "mt-2 text-sm text-on-surface-variant", entry.message));
+
+    const right = createUiElement("div", "shrink-0 rounded-full bg-surface-container-highest px-2.5 py-1 text-[11px] font-bold text-on-surface-variant");
+    right.textContent = `${index + 1}`;
+
+    const message = createUiElement("p", "mt-2 text-sm leading-6 text-on-surface-variant", entry.message);
+    if (entry.penaltyPointsGained > 0) {
+      message.appendChild(
+        createUiElement(
+          "span",
+          "ml-2 inline-flex items-center gap-1 rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[11px] font-black text-primary",
+          `+${entry.penaltyPointsGained}`
+        )
+      );
+    }
+    top.append(left, right);
+    card.append(top, message);
     elements.playLog.appendChild(card);
   });
 }
@@ -1598,12 +1859,14 @@ function renderGame(state, appState, elements) {
   renderPlayerHand(state, appState, elements);
   renderStatus(state, appState, elements);
   renderSelfProfile(appState, elements);
-  renderSubmissionStatus(state, elements);
+  renderPlayerStatePanel(state, appState, elements);
+  renderChatPanel(appState, elements);
   renderPlayLog(appState, elements);
   renderRoundSummary(state, appState, elements);
 }
 
 function renderApp(appState, elements) {
+  syncSectionLabels(elements);
   renderConnectionBadge(appState, elements);
 
   const showGame = Boolean(appState.serverState);
@@ -1666,6 +1929,8 @@ function buildLogEntry(state, step) {
     cardNumber: step.card.number,
     rowId: step.rowId,
     message,
+    placement: step.placement,
+    penaltyPointsGained: step.penaltyPointsGained ?? 0,
   };
 }
 
@@ -1674,6 +1939,10 @@ function shouldTriggerCleanupMotion(step) {
 }
 
 function applyStateDiff(appState, nextState) {
+  if (!nextState?.round || !Array.isArray(nextState.players) || !Array.isArray(nextState.rows)) {
+    return;
+  }
+
   const previousState = appState.serverState;
   const previousResolvedCount = previousState?.round?.resolvedCards?.length ?? 0;
   const nextResolvedCards = nextState.round?.resolvedCards ?? [];
@@ -1699,9 +1968,9 @@ function applyStateDiff(appState, nextState) {
       }
 
       appState.processedLogIds.add(entry.id);
-      appState.playLog = [entry, ...appState.playLog].slice(0, 16);
-      freshSteps.push(step);
-    });
+        appState.playLog = [entry, ...appState.playLog].slice(0, 4);
+        freshSteps.push(step);
+      });
 
     if (freshSteps.length) {
       const latestStep = freshSteps[freshSteps.length - 1];
@@ -1711,7 +1980,14 @@ function applyStateDiff(appState, nextState) {
       appState.recentPlayedNumbers = [latestStep.card.number];
       appState.highlightedRowIds = latestStep.penaltyPointsGained > 0 ? [latestStep.rowId] : [];
       appState.cleanedRowIds = cleanupTriggered ? [latestStep.rowId] : [];
-      appState.cleanupAnnouncement = cleanupTriggered ? `청소부 ${cleanerName}!` : "";
+      appState.cleanupAnnouncement = cleanupTriggered
+        ? buildCleanupAnnouncement(
+            latestStep,
+            cleanerName,
+            nextState.round.number,
+            nextState.round.turn
+          )
+        : "";
 
       if (appState.highlightTimerId) {
         window.clearTimeout(appState.highlightTimerId);
@@ -1889,6 +2165,39 @@ async function handleRestartRound(appState, elements) {
   renderApp(appState, elements);
 }
 
+async function handleSendChat(appState, elements) {
+  const message = elements.chatInput?.value?.trim();
+
+  if (!appState.room?.roomCode || !message) {
+    return;
+  }
+
+  if (!appState.socket?.connected) {
+    appState.transientStatus = "채팅 서버 연결이 끊어져 있습니다.";
+    renderApp(appState, elements);
+    return;
+  }
+
+  const response = await withAck(appState.socket, "sendChatMessage", {
+    roomCode: appState.room.roomCode,
+    message,
+  });
+
+  if (!response.ok) {
+    appState.transientStatus = response.error || "채팅 전송에 실패했습니다.";
+    renderApp(appState, elements);
+    return;
+  }
+
+  appState.room = {
+    ...(appState.room ?? {}),
+    chatMessages: [...(Array.isArray(appState.room?.chatMessages) ? appState.room.chatMessages : []), response.message].slice(-30),
+  };
+  appState.transientStatus = "";
+  elements.chatInput.value = "";
+  renderApp(appState, elements);
+}
+
 async function handleResumeSession(appState, elements) {
   if (!appState.playerId || !appState.room?.roomCode) {
     return;
@@ -2004,6 +2313,7 @@ function initializeApp(socket) {
   if (!elements.app) {
     return;
   }
+  syncSectionLabels(elements);
 
   const appState = createAppState(socket);
   const storedSession = loadActiveSession();
@@ -2044,6 +2354,7 @@ function initializeApp(socket) {
     if (room.hasGameStarted) {
       appState.roomStatus = "게임이 시작되었습니다.";
     } else {
+      appState.serverState = null;
       const isHost = room.hostPlayerId === appState.playerId;
       const humanCount = room.players.filter((player) => !player.isBot).length;
       appState.roomStatus = isHost
@@ -2062,6 +2373,15 @@ function initializeApp(socket) {
         ...(appState.room ?? {}),
         roomCode,
       };
+    }
+
+    if (!state || !state.round || !Array.isArray(state.players) || !Array.isArray(state.rows)) {
+      appState.serverState = null;
+      appState.isRestoringSession = false;
+      appState.transientStatus = "";
+      appState.pendingSubmit = false;
+      rerender();
+      return;
     }
 
     applyStateDiff(appState, state);
@@ -2088,6 +2408,19 @@ function initializeApp(socket) {
     rerender();
   });
 
+  socket.on("chatUpdated", ({ roomCode, messages }) => {
+    if (roomCode && appState.room?.roomCode !== roomCode) {
+      return;
+    }
+
+    appState.room = {
+      ...(appState.room ?? {}),
+      ...(roomCode ? { roomCode } : {}),
+      chatMessages: Array.isArray(messages) ? messages : [],
+    };
+    rerender();
+  });
+
   socket.on("placementWarning", ({ roomCode, message }) => {
     if (roomCode && appState.room?.roomCode !== roomCode) {
       return;
@@ -2107,6 +2440,19 @@ function initializeApp(socket) {
 
   elements.joinRoomButton.addEventListener("click", () => {
     handleJoinRoom(appState, elements);
+  });
+
+  elements.chatSendButton?.addEventListener("click", () => {
+    handleSendChat(appState, elements);
+  });
+
+  elements.chatInput?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || event.isComposing) {
+      return;
+    }
+
+    event.preventDefault();
+    handleSendChat(appState, elements);
   });
 
   elements.startGameButton.addEventListener("click", () => {

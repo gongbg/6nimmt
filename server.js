@@ -20,6 +20,7 @@ const io = new Server(httpServer, {
 
 const PORT = Number(process.env.PORT) || 3000;
 const MAX_PLAYERS_PER_ROOM = 4;
+const MAX_CHAT_MESSAGES = 30;
 const TURN_STEP_DELAY_MS = 900;
 const AI_PLACEMENT_DELAY_MS = 1500;
 const RECONNECT_GRACE_MS = 5 * 60 * 1000;
@@ -118,6 +119,7 @@ function createRoom({ ownerPlayer, mode }) {
     mode,
     hostPlayerId: ownerPlayer.id,
     players: [ownerPlayer],
+    chatMessages: [],
     gameState: null,
     resolutionTimerId: null,
     manualChoice: null,
@@ -138,14 +140,38 @@ function getRoomPlayersForState(room) {
 }
 
 function buildRoomSummary(room) {
+  const chatMessages = Array.isArray(room.chatMessages) ? room.chatMessages : [];
+
   return {
     roomCode: room.code,
     mode: room.mode,
     hostPlayerId: room.hostPlayerId,
     playerCount: room.players.length,
     players: getRoomPlayersForState(room),
+    chatMessages: chatMessages.map((message) => ({ ...message })),
     hasGameStarted: Boolean(room.gameState),
   };
+}
+
+function appendChatMessage(room, { playerId, nickname, message, isSystem = false }) {
+  const normalizedMessage = String(message || "").trim();
+
+  if (!normalizedMessage) {
+    return null;
+  }
+
+  const entry = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    playerId: playerId ?? "system",
+    nickname: nickname ?? "System",
+    message: normalizedMessage.slice(0, 160),
+    isSystem,
+    createdAt: Date.now(),
+  };
+
+  const currentMessages = Array.isArray(room.chatMessages) ? room.chatMessages : [];
+  room.chatMessages = [...currentMessages, entry].slice(-MAX_CHAT_MESSAGES);
+  return entry;
 }
 
 function sumPenalty(cards) {
@@ -361,6 +387,15 @@ function emitSubmissionStatus(room) {
   io.to(room.code).emit("submissionStatusUpdated", {
     roomCode: room.code,
     statuses: buildSubmissionStatus(room),
+  });
+}
+
+function emitChatMessages(room) {
+  io.to(room.code).emit("chatUpdated", {
+    roomCode: room.code,
+    messages: (Array.isArray(room.chatMessages) ? room.chatMessages : []).map((message) => ({
+      ...message,
+    })),
   });
 }
 
@@ -809,6 +844,43 @@ io.on("connection", (socket) => {
         ok: true,
         readyToResolve: turnResult.readyToResolve,
       });
+    } catch (error) {
+      callback({
+        ok: false,
+        error: error.message,
+      });
+    }
+  });
+
+  socket.on("sendChatMessage", ({ roomCode, message } = {}, callback = () => {}) => {
+    try {
+      const normalizedRoomCode = String(roomCode || "").trim().toUpperCase();
+      const room = rooms[normalizedRoomCode];
+
+      if (!room) {
+        throw new Error("Room not found.");
+      }
+
+      const player = room.players.find((currentPlayer) => currentPlayer.socketId === socket.id);
+
+      if (!player) {
+        throw new Error("You are not a member of this room.");
+      }
+
+      const appendedMessage = appendChatMessage(room, {
+        playerId: player.id,
+        nickname: player.nickname,
+        message,
+        isSystem: false,
+      });
+
+      if (!appendedMessage) {
+        throw new Error("Message is empty.");
+      }
+
+      emitRoomSummary(room);
+      emitChatMessages(room);
+      callback({ ok: true, message: appendedMessage });
     } catch (error) {
       callback({
         ok: false,
