@@ -60,13 +60,41 @@ function createUiElement(tagName, className = "", textContent = "") {
   return element;
 }
 
+function getSessionStorages() {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  const storages = [];
+
+  try {
+    if (window.localStorage) {
+      storages.push(window.localStorage);
+    }
+  } catch (_error) {
+    // Ignore storage access failures and fall back to any available storage.
+  }
+
+  try {
+    if (window.sessionStorage && !storages.includes(window.sessionStorage)) {
+      storages.push(window.sessionStorage);
+    }
+  } catch (_error) {
+    // Ignore storage access failures and fall back to any available storage.
+  }
+
+  return storages;
+}
+
 function saveActiveSession(appState) {
-  if (typeof window === "undefined" || !window.sessionStorage) {
+  const storages = getSessionStorages();
+
+  if (storages.length === 0) {
     return;
   }
 
   if (!appState.playerId || !appState.room?.roomCode) {
-    window.sessionStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+    storages.forEach((storage) => storage.removeItem(ACTIVE_SESSION_STORAGE_KEY));
     return;
   }
 
@@ -76,38 +104,37 @@ function saveActiveSession(appState) {
     room: appState.room,
     serverState: appState.serverState,
     playLog: appState.playLog,
+    selectedCardNumber: appState.selectedCardNumber,
     processedLogIds: Array.from(appState.processedLogIds ?? []),
     savedAt: Date.now(),
   };
 
-  window.sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(payload));
+  const serializedPayload = JSON.stringify(payload);
+  storages.forEach((storage) => storage.setItem(ACTIVE_SESSION_STORAGE_KEY, serializedPayload));
 }
 
 function loadActiveSession() {
-  if (typeof window === "undefined" || !window.sessionStorage) {
-    return null;
+  const storages = getSessionStorages();
+
+  for (const storage of storages) {
+    const rawValue = storage.getItem(ACTIVE_SESSION_STORAGE_KEY);
+
+    if (!rawValue) {
+      continue;
+    }
+
+    try {
+      return JSON.parse(rawValue);
+    } catch (_error) {
+      storage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+    }
   }
 
-  const rawValue = window.sessionStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
-
-  if (!rawValue) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(rawValue);
-  } catch (_error) {
-    window.sessionStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
-    return null;
-  }
+  return null;
 }
 
 function clearActiveSession() {
-  if (typeof window === "undefined" || !window.sessionStorage) {
-    return;
-  }
-
-  window.sessionStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+  getSessionStorages().forEach((storage) => storage.removeItem(ACTIVE_SESSION_STORAGE_KEY));
 }
 
 function resetAppToLobby(appState) {
@@ -123,6 +150,7 @@ function resetAppToLobby(appState) {
   appState.avatarSaving = false;
   appState.leavingGame = false;
   appState.isRestoringSession = false;
+  appState.resumeInFlight = false;
   appState.summaryOpen = false;
   appState.playLog = [];
   appState.processedLogIds = new Set();
@@ -788,6 +816,7 @@ function createAppState(socket) {
     avatarSaving: false,
     leavingGame: false,
     isRestoringSession: false,
+    resumeInFlight: false,
     leaveGameModalOpen: false,
   };
 }
@@ -951,6 +980,10 @@ function hydrateFromStoredSession(appState, storedSession) {
   };
   appState.serverState = storedSession.serverState ?? null;
   appState.playLog = (Array.isArray(storedSession.playLog) ? storedSession.playLog : []).slice(0, 4);
+  appState.selectedCardNumber =
+    typeof storedSession.selectedCardNumber === "number"
+      ? storedSession.selectedCardNumber
+      : null;
   appState.processedLogIds = new Set(
     Array.isArray(storedSession.processedLogIds)
       ? storedSession.processedLogIds
@@ -2208,9 +2241,11 @@ async function handleSendChat(appState, elements) {
 }
 
 async function handleResumeSession(appState, elements) {
-  if (!appState.playerId || !appState.room?.roomCode) {
+  if (!appState.playerId || !appState.room?.roomCode || appState.resumeInFlight) {
     return;
   }
+
+  appState.resumeInFlight = true;
 
   const response = await withAck(appState.socket, "resumeSession", {
     roomCode: appState.room.roomCode,
@@ -2218,6 +2253,7 @@ async function handleResumeSession(appState, elements) {
   });
 
   if (!response.ok) {
+    appState.resumeInFlight = false;
     clearActiveSession();
     appState.playerId = null;
     appState.room = null;
@@ -2230,7 +2266,12 @@ async function handleResumeSession(appState, elements) {
 
   appState.playerId = response.playerId;
   appState.room = response.room;
-  appState.isRestoringSession = false;
+  appState.resumeInFlight = false;
+
+  if (!response.room?.hasGameStarted) {
+    appState.serverState = null;
+    appState.isRestoringSession = false;
+  }
   appState.lobbyStatus = "진행 중인 게임으로 다시 연결되었습니다.";
   renderApp(appState, elements);
 }
@@ -2337,9 +2378,19 @@ function initializeApp(socket) {
     renderApp(appState, elements);
     saveActiveSession(appState);
   };
+  const persistSession = () => {
+    saveActiveSession(appState);
+  };
+
+  window.addEventListener("pagehide", persistSession);
+  window.addEventListener("beforeunload", persistSession);
 
   socket.on("connect", () => {
     appState.connectionStatus = "connected";
+    if (appState.isRestoringSession) {
+      rerender();
+      return;
+    }
     appState.lobbyStatus = "서버에 연결되었습니다. 닉네임을 입력하고 시작하세요.";
     rerender();
   });
@@ -2356,14 +2407,22 @@ function initializeApp(socket) {
     }
   });
 
+  if (appState.isRestoringSession && socket.connected) {
+    handleResumeSession(appState, elements);
+  }
+
   socket.on("roomUpdated", (room) => {
     appState.room = room;
-    appState.isRestoringSession = false;
+    const keepHydratedGameState =
+      appState.isRestoringSession &&
+      Boolean(appState.serverState?.round) &&
+      room.hasGameStarted;
 
     if (room.hasGameStarted) {
       appState.roomStatus = "게임이 시작되었습니다.";
-    } else {
+    } else if (!keepHydratedGameState) {
       appState.serverState = null;
+      appState.isRestoringSession = false;
       const isHost = room.hostPlayerId === appState.playerId;
       const humanCount = room.players.filter((player) => !player.isBot).length;
       appState.roomStatus = isHost
@@ -2385,6 +2444,11 @@ function initializeApp(socket) {
     }
 
     if (!state || !state.round || !Array.isArray(state.players) || !Array.isArray(state.rows)) {
+      if (appState.isRestoringSession && appState.serverState?.round) {
+        rerender();
+        return;
+      }
+
       appState.serverState = null;
       appState.isRestoringSession = false;
       appState.transientStatus = "";
