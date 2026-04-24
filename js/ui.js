@@ -821,7 +821,10 @@ function getUiElements() {
       opponentSlots: Array.from(document.querySelectorAll("[data-opponent-slot]")),
       boardRows: document.getElementById("board-rows"),
       cleanupAnnouncement: document.getElementById("cleanup-announcement"),
-      handPanel: document.getElementById("hand-panel"),
+      handPanel:
+        document.getElementById("hand-panel") ??
+        document.getElementById("player-hand")?.closest("section") ??
+        null,
       playerHand: document.getElementById("player-hand"),
       currentTurnCards: document.getElementById("current-turn-cards"),
       submitButton: document.getElementById("submit-card-button"),
