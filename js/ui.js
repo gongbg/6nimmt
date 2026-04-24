@@ -1159,14 +1159,10 @@ function renderBoardRows(state, appState, elements) {
           cardElement.classList.add("card-light-enter");
         }
 
-        if (card.penalty >= 5) {
-          cardElement.classList.add("card-slam-enter");
-          cardElement.classList.add("card-floor-crack");
-        }
-
         if (card.penalty >= 7) {
           cardElement.classList.add("card-slam-enter-disaster");
-          cardElement.classList.add("card-floor-crack-disaster");
+        } else if (card.penalty >= 5) {
+          cardElement.classList.add("card-slam-enter");
         }
       }
 
