@@ -49,6 +49,16 @@
   overflow: visible;
 }
 
+.my-turn-panel {
+  animation: hand-panel-turn-glow 1.6s ease-in-out infinite;
+}
+
+#turn-notice {
+  box-shadow:
+    0 10px 24px -16px rgba(255, 112, 67, 0.75),
+    inset 0 1px 0 rgba(255, 219, 208, 0.12);
+}
+
 #game-log-sidebar > .rounded-\[1\.5rem\] > h3:first-of-type {
   display: none;
 }
@@ -803,6 +813,25 @@
   50% {
     box-shadow: inset 0 0 0 2px rgba(255, 181, 159, 0.55), 0 0 24px rgba(255, 112, 67, 0.24);
     filter: brightness(1.14);
+  }
+}
+
+@keyframes hand-panel-turn-glow {
+  0%,
+  100% {
+    border-color: rgba(255, 181, 159, 0.22);
+    box-shadow:
+      0 12px 40px -10px rgba(0, 0, 0, 0.45),
+      0 0 0 1px rgba(255, 181, 159, 0.08),
+      0 0 14px rgba(255, 112, 67, 0.1);
+  }
+
+  50% {
+    border-color: rgba(255, 181, 159, 0.55);
+    box-shadow:
+      0 12px 40px -10px rgba(0, 0, 0, 0.45),
+      0 0 0 1px rgba(255, 181, 159, 0.18),
+      0 0 28px rgba(255, 112, 67, 0.24);
   }
 }
 

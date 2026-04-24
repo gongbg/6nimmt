@@ -818,15 +818,17 @@ function getUiElements() {
     selfProfileButton: document.getElementById("self-profile-button"),
     selfProfileAvatar: document.getElementById("self-profile-avatar"),
     selfProfileName: document.getElementById("self-profile-name"),
-    opponentSlots: Array.from(document.querySelectorAll("[data-opponent-slot]")),
-    boardRows: document.getElementById("board-rows"),
-    cleanupAnnouncement: document.getElementById("cleanup-announcement"),
-    playerHand: document.getElementById("player-hand"),
-    currentTurnCards: document.getElementById("current-turn-cards"),
-    submitButton: document.getElementById("submit-card-button"),
-    restartButton: document.getElementById("restart-round-button"),
-    roundIndicator: document.getElementById("round-indicator"),
-    statusMessage: document.getElementById("status-message"),
+      opponentSlots: Array.from(document.querySelectorAll("[data-opponent-slot]")),
+      boardRows: document.getElementById("board-rows"),
+      cleanupAnnouncement: document.getElementById("cleanup-announcement"),
+      handPanel: document.getElementById("hand-panel"),
+      playerHand: document.getElementById("player-hand"),
+      currentTurnCards: document.getElementById("current-turn-cards"),
+      submitButton: document.getElementById("submit-card-button"),
+      restartButton: document.getElementById("restart-round-button"),
+      roundIndicator: document.getElementById("round-indicator"),
+      turnNotice: document.getElementById("turn-notice"),
+      statusMessage: document.getElementById("status-message"),
     playerPenaltyPoints: document.getElementById("player-penalty-points"),
     phaseIndicator: document.getElementById("phase-indicator"),
     deckCount: document.getElementById("deck-count"),
@@ -1535,6 +1537,11 @@ function renderStatus(state, appState, elements) {
   const submittedOrPending = submitted || appState.pendingSubmit;
   const isResolving = Boolean(state.round.pendingResolution);
   const isChoosingRow = Boolean(state.manualChoice?.isChooser);
+  const isMyTurnActionable =
+    Boolean(currentPlayer) &&
+    state.round.phase !== "finished" &&
+    isChoosingRow;
+  const shouldShowTurnNotice = isChoosingRow;
 
   elements.roundIndicator.textContent = `Round ${state.round.number} • Turn ${displayedTurn} / 10`;
   elements.statusMessage.textContent = buildStatusMessage(state, appState);
@@ -1567,6 +1574,13 @@ function renderStatus(state, appState, elements) {
     appState.room.hostPlayerId !== appState.playerId ||
     isResolving ||
     Boolean(state.manualChoice);
+
+  if (elements.turnNotice) {
+    elements.turnNotice.textContent = "당신 차례입니다";
+    elements.turnNotice.classList.toggle("hidden", !shouldShowTurnNotice);
+  }
+
+  elements.handPanel?.classList.toggle("my-turn-panel", isMyTurnActionable);
 }
 
 function renderSelfProfile(appState, elements) {
