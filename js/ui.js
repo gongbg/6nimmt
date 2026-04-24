@@ -817,6 +817,10 @@ function createAppState(socket) {
     leavingGame: false,
     isRestoringSession: false,
     resumeInFlight: false,
+    lastHandClick: {
+      cardNumber: null,
+      timestamp: 0,
+    },
     leaveGameModalOpen: false,
   };
 }
@@ -2277,11 +2281,13 @@ async function handleResumeSession(appState, elements) {
 }
 
 function openLeaveGameModal(appState, elements) {
+  appState.leavingGame = false;
   appState.leaveGameModalOpen = true;
   renderApp(appState, elements);
 }
 
 function closeLeaveGameModal(appState, elements) {
+  appState.leavingGame = false;
   appState.leaveGameModalOpen = false;
   renderApp(appState, elements);
 }
@@ -2618,9 +2624,23 @@ function initializeApp(socket) {
     }
 
     const cardNumber = Number(cardButton.dataset.cardNumber);
-    appState.selectedCardNumber = appState.selectedCardNumber === cardNumber ? null : cardNumber;
+    const now = Date.now();
+    const isDoubleClick =
+      appState.lastHandClick.cardNumber === cardNumber &&
+      now - appState.lastHandClick.timestamp <= 360;
+
+    appState.selectedCardNumber =
+      appState.selectedCardNumber === cardNumber && !isDoubleClick ? null : cardNumber;
+    appState.lastHandClick = {
+      cardNumber,
+      timestamp: now,
+    };
     appState.transientStatus = "";
     rerender();
+
+    if (isDoubleClick) {
+      handleSubmitCard(appState, elements);
+    }
   });
 
   elements.boardRows.addEventListener("click", (event) => {
