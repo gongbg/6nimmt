@@ -1181,9 +1181,12 @@ function renderBoardRows(state, appState, elements) {
 
     const rowPenaltyBadge = createUiElement(
       "div",
-      "absolute right-3 top-2 z-10 rounded-full border border-outline-variant/20 bg-surface-container-highest/90 px-2.5 py-1 text-[11px] font-black text-primary flex items-center gap-1 shadow-[0_8px_20px_-14px_rgba(0,0,0,0.55)]"
+      "absolute right-3 top-2 z-10 rounded-full border border-outline-variant/20 bg-surface-container-highest/95 px-3.5 py-2 text-[15px] lg:text-[17px] font-black text-primary flex items-center gap-2 shadow-[0_12px_28px_-14px_rgba(0,0,0,0.65)]"
     );
-    rowPenaltyBadge.append(createBullIcon("text-current text-[13px]"), document.createTextNode(String(rowPenaltyTotal)));
+    rowPenaltyBadge.append(
+      createBullIcon("text-current text-[17px] lg:text-[19px]"),
+      document.createTextNode(String(rowPenaltyTotal))
+    );
     rowElement.appendChild(rowPenaltyBadge);
 
     row.cards.forEach((card, index) => {
