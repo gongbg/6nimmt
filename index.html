@@ -264,21 +264,16 @@
 
       <div class="flex flex-col gap-1.5 lg:gap-2 flex-[0_1_auto] justify-center items-center w-full max-w-6xl mx-auto relative z-20 pb-2 lg:pb-2.5" id="board-rows"></div>
 
-      <section class="mt-2.5 lg:mt-3 pt-1.5 lg:pt-2 rounded-[1.75rem] border border-outline-variant/15 bg-surface-container-high/70 backdrop-blur-xl p-3.5 lg:p-3.5 pb-4 lg:pb-4 shadow-[0_12px_40px_-10px_rgba(0,0,0,0.45)] z-20">
-        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <section class="mt-2 lg:mt-2.5 pt-1 lg:pt-1.5 rounded-[1.75rem] border border-outline-variant/15 bg-surface-container-high/70 backdrop-blur-xl p-3 lg:p-3 pb-3 lg:pb-3 shadow-[0_12px_40px_-10px_rgba(0,0,0,0.45)] z-20">
+        <div class="flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p class="text-xs uppercase tracking-[0.3em] text-primary/80 font-bold" id="round-indicator">Round 1 • Turn 1 / 10</p>
-            <h2 class="text-xl lg:text-2xl font-headline font-extrabold text-on-surface mt-1">Your Hand</h2>
-            <p class="text-sm text-on-surface-variant mt-1" id="status-message">카드를 선택하고 제출하세요.</p>
+            <div class="mt-1 flex flex-col gap-1.5 lg:flex-row lg:items-center lg:gap-3">
+              <h2 class="text-xl lg:text-2xl font-headline font-extrabold text-on-surface">Your Hand</h2>
+              <p class="text-xs lg:text-[13px] leading-5 text-primary/95 font-black rounded-full border border-primary/20 bg-surface-container-lowest/65 px-3 py-1 lg:whitespace-nowrap" id="status-message">카드를 선택하고 제출하세요.</p>
+            </div>
           </div>
           <div class="flex flex-wrap items-center gap-3">
-            <button class="rounded-full border border-outline-variant/20 bg-surface-container-lowest/80 px-3 py-1.5 text-sm font-semibold text-on-surface flex items-center gap-3 transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-50" id="self-profile-button" type="button">
-              <span class="h-10 w-10 shrink-0" id="self-profile-avatar"></span>
-              <span class="text-left">
-                <span class="block text-[11px] uppercase tracking-[0.22em] text-primary/75 font-black">Profile</span>
-                <span class="block font-headline text-sm font-black text-on-surface" id="self-profile-name">Player</span>
-              </span>
-            </button>
             <div class="rounded-full border border-outline-variant/20 bg-surface-container-lowest px-4 py-1.5 text-sm font-semibold text-on-surface flex items-center gap-2">
               <span class="text-[18px] text-primary inline-flex" data-static-bull-icon></span>
               <span>누적 벌점</span>
