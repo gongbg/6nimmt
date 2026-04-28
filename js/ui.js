@@ -154,6 +154,8 @@ function resetAppToLobby(appState) {
   appState.summaryOpen = false;
   appState.playLog = [];
   appState.processedLogIds = new Set();
+  appState.enteringLogIds = new Set();
+  appState.guidedPulseVariant = "a";
   resetHighlightState(appState);
 }
 
@@ -679,6 +681,8 @@ function createAppState(socket) {
     summaryOpen: false,
     highlightTimerId: null,
     processedLogIds: new Set(),
+    enteringLogIds: new Set(),
+    guidedPulseVariant: "a",
     chatBubbleTimerId: null,
     avatarEditorOpen: false,
     avatarDraft: normalizeAvatar(DEFAULT_AVATAR),
@@ -1088,6 +1092,7 @@ function renderBoardRows(state, appState, elements) {
   const manualChoice = state.manualChoice;
   const canChooseRow = Boolean(manualChoice?.isChooser && !state.reconnectPause?.paused);
   const allowedRowIds = new Set(manualChoice?.allowedRowIds ?? []);
+  const guidedPulseClass = `guided-pulse-${appState.guidedPulseVariant ?? "a"}`;
 
   elements.boardRows.innerHTML = "";
 
@@ -1110,8 +1115,12 @@ function renderBoardRows(state, appState, elements) {
       rowClasses.push("row-selectable");
     }
 
-    if (manualChoice?.recommendedRowId === row.id) {
-      rowClasses.push("row-guided");
+    const shouldGuideRow =
+      manualChoice?.recommendedRowId === row.id ||
+      (canChooseRow && manualChoice?.reason === "small-card-choice" && allowedRowIds.has(row.id));
+
+    if (shouldGuideRow) {
+      rowClasses.push("row-guided", guidedPulseClass);
     }
 
     const rowElement = createUiElement("div", rowClasses.join(" "));
@@ -1528,7 +1537,16 @@ function renderStatus(state, appState, elements) {
     elements.turnNotice.classList.toggle("hidden", !shouldShowTurnNotice);
   }
 
-  elements.handPanel?.classList.toggle("my-turn-panel", isMyTurnActionable);
+  if (elements.handPanel) {
+    elements.handPanel.classList.remove("hand-deck-guided", "guided-pulse-a", "guided-pulse-b");
+
+    if (isMyTurnActionable) {
+      elements.handPanel.classList.add(
+        "hand-deck-guided",
+        `guided-pulse-${appState.guidedPulseVariant ?? "a"}`
+      );
+    }
+  }
 }
 
 function renderSelfProfile(appState, elements) {
@@ -1681,6 +1699,7 @@ function renderLeaveGameModal(appState, elements) {
 
 function renderPlayLog(appState, elements) {
   elements.playLog.innerHTML = "";
+  const enteringLogIds = appState.enteringLogIds ?? new Set();
 
   if (!appState.playLog.length) {
     elements.playLog.appendChild(
@@ -1708,7 +1727,7 @@ function renderPlayLog(appState, elements) {
       "article",
       [
         "rounded-2xl border border-outline-variant/15 bg-surface-container-lowest/65 px-4 py-3 shadow-[0_10px_26px_-18px_rgba(0,0,0,0.55)]",
-        index === 0 ? "log-entry-enter" : "",
+        enteringLogIds.has(entry.id) ? "log-entry-enter" : "",
       ]
         .filter(Boolean)
         .join(" ")
@@ -1755,6 +1774,8 @@ function renderPlayLog(appState, elements) {
     card.append(top, message);
     elements.playLog.appendChild(card);
   });
+
+  enteringLogIds.clear();
 }
 
 function renderRoundSummary(state, appState, elements) {
@@ -1814,6 +1835,14 @@ function renderRoundSummary(state, appState, elements) {
 }
 
 function renderGame(state, appState, elements) {
+  const shouldGuideHandDeck = Boolean(state.manualChoice?.isChooser && !state.reconnectPause?.paused);
+
+  if (shouldGuideHandDeck) {
+    appState.guidedPulseVariant = appState.guidedPulseVariant === "a" ? "b" : "a";
+  } else {
+    appState.guidedPulseVariant = "a";
+  }
+
   renderOpponentHud(state, appState, elements);
   renderBoardRows(state, appState, elements);
   renderCleanupAnnouncement(appState, elements);
@@ -1871,6 +1900,8 @@ function resetGameUiState(appState) {
   appState.pendingSubmit = false;
   appState.playLog = [];
   appState.processedLogIds = new Set();
+  appState.enteringLogIds = new Set();
+  appState.guidedPulseVariant = "a";
   appState.summaryOpen = false;
   appState.transientStatus = "";
   resetHighlightState(appState);
@@ -1930,6 +1961,7 @@ function applyStateDiff(appState, nextState) {
       }
 
       appState.processedLogIds.add(entry.id);
+      appState.enteringLogIds.add(entry.id);
       appState.playLog = [entry, ...appState.playLog].slice(0, 4);
       freshSteps.push(step);
     });
