@@ -292,7 +292,7 @@
           <div class="relative -top-0.5 lg:-top-1 flex w-full max-w-full justify-center items-end gap-1 lg:gap-2 h-[8rem] lg:h-[10rem] overflow-visible" id="player-hand"></div>
         </div>
 
-        <section class="mt-2.5">
+        <section class="hidden mt-2.5">
           <div class="min-h-0 rounded-[1.5rem] border border-outline-variant/15 bg-surface-container-low/70 p-2.5 lg:p-3">
             <div class="flex items-center justify-between gap-4">
               <div>
@@ -333,6 +333,7 @@
 
   <aside class="hidden lg:w-72 xl:w-80 lg:shrink-0 lg:self-start lg:overflow-visible lg:sticky lg:top-6 lg:max-h-[calc(100vh-48px)] lg:overflow-y-auto" id="game-sidebar">
     <div class="rounded-[1.5rem] border border-outline-variant/15 bg-surface-container-low/70 p-4">
+      <div class="hidden">
       <p class="text-xs uppercase tracking-[0.3em] text-primary/80 font-bold">Round State</p>
       <h3 class="mt-1 text-lg font-headline font-extrabold text-on-surface">현재 라운드</h3>
       <div class="mt-4 space-y-3 text-sm">
@@ -349,13 +350,14 @@
           <span class="font-bold text-on-surface" id="selection-indicator">대기 중</span>
         </div>
       </div>
-      <div class="mt-5 border-t border-outline-variant/15 pt-4">
+      </div>
+      <div>
         <p class="text-xs uppercase tracking-[0.3em] text-primary/80 font-bold">Players</p>
         <div class="mt-3 flex flex-col gap-2" id="submission-status-list"></div>
       </div>
       <div class="mt-5 border-t border-outline-variant/15 pt-4">
         <p class="text-xs uppercase tracking-[0.3em] text-primary/80 font-bold">Chat</p>
-        <div class="mt-3 max-h-56 overflow-y-auto rounded-2xl border border-outline-variant/15 bg-surface-container-lowest/55 px-3 py-3" id="chat-messages"></div>
+        <div class="mt-3 overflow-hidden rounded-2xl border border-outline-variant/15 bg-surface-container-lowest/55 px-3 py-3" id="chat-messages"></div>
         <div class="mt-3 flex items-center gap-2">
           <input class="min-w-0 flex-1 rounded-full border border-outline-variant/20 bg-surface-container-lowest px-4 py-2.5 text-sm text-on-surface placeholder:text-on-surface-variant/45 focus:border-primary focus:ring-0" id="chat-input" maxlength="160" placeholder="메시지를 입력하세요" type="text">
           <button class="shrink-0 rounded-full bg-gradient-to-r from-primary to-primary-container px-4 py-2.5 text-sm font-black text-on-primary-fixed-variant shadow-[0_14px_30px_-12px_rgba(255,112,67,0.75)] transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-50" id="chat-send-button" type="button">

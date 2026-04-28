@@ -29,6 +29,8 @@ const DEFAULT_AVATAR = {
   mouthType: AVATAR_MOUTH_TYPES[0],
 };
 const ACTIVE_SESSION_STORAGE_KEY = "sixnimmt.activeSession";
+const CHAT_BUBBLE_TTL_MS = 3000;
+const CHAT_PANEL_VISIBLE_MESSAGES = 3;
 const CLEANUP_ANNOUNCEMENT_BUILDERS = [
   (name) => `청소부 ${name}`,
   (name) => `바닥쓸기장인 ${name}`,
@@ -131,6 +133,11 @@ function clearActiveSession() {
 }
 
 function resetAppToLobby(appState) {
+  if (typeof window !== "undefined" && appState.chatBubbleTimerId) {
+    window.clearTimeout(appState.chatBubbleTimerId);
+    appState.chatBubbleTimerId = null;
+  }
+
   appState.playerId = null;
   appState.room = null;
   appState.serverState = null;
@@ -672,6 +679,7 @@ function createAppState(socket) {
     summaryOpen: false,
     highlightTimerId: null,
     processedLogIds: new Set(),
+    chatBubbleTimerId: null,
     avatarEditorOpen: false,
     avatarDraft: normalizeAvatar(DEFAULT_AVATAR),
     avatarSaving: false,
@@ -807,7 +815,12 @@ function getPlayerName(state, playerId) {
   return state?.players?.find((player) => player.id === playerId)?.nickname ?? playerId;
 }
 
-function getLatestChatByPlayer(appState) {
+function getChatCreatedAt(entry) {
+  const createdAt = Number(entry?.createdAt);
+  return Number.isFinite(createdAt) ? createdAt : 0;
+}
+
+function getLatestChatByPlayer(appState, now = Date.now()) {
   const latestChatByPlayer = new Map();
   const chatMessages = Array.isArray(appState.room?.chatMessages) ? appState.room.chatMessages : [];
 
@@ -816,10 +829,48 @@ function getLatestChatByPlayer(appState) {
       continue;
     }
 
+    const age = now - getChatCreatedAt(entry);
+    if (age < 0 || age >= CHAT_BUBBLE_TTL_MS) {
+      continue;
+    }
+
     latestChatByPlayer.set(entry.playerId, entry);
   }
 
   return latestChatByPlayer;
+}
+
+function scheduleChatBubbleExpiry(appState, rerender) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  if (appState.chatBubbleTimerId) {
+    window.clearTimeout(appState.chatBubbleTimerId);
+    appState.chatBubbleTimerId = null;
+  }
+
+  const now = Date.now();
+  const chatMessages = Array.isArray(appState.room?.chatMessages) ? appState.room.chatMessages : [];
+  let nextDelay = Number.POSITIVE_INFINITY;
+
+  for (const entry of chatMessages) {
+    if (!entry?.playerId || entry.isSystem || !entry.message) {
+      continue;
+    }
+
+    const age = now - getChatCreatedAt(entry);
+    if (age >= 0 && age < CHAT_BUBBLE_TTL_MS) {
+      nextDelay = Math.min(nextDelay, CHAT_BUBBLE_TTL_MS - age + 30);
+    }
+  }
+
+  if (Number.isFinite(nextDelay)) {
+    appState.chatBubbleTimerId = window.setTimeout(() => {
+      appState.chatBubbleTimerId = null;
+      rerender();
+    }, nextDelay);
+  }
 }
 
 function createProfileChatBubble(chatEntry, isSelf) {
@@ -1350,9 +1401,10 @@ function renderChatPanel(appState, elements) {
   }
 
   const chatMessages = Array.isArray(appState.room?.chatMessages) ? appState.room.chatMessages : [];
+  const visibleChatMessages = chatMessages.slice(-CHAT_PANEL_VISIBLE_MESSAGES);
   elements.chatMessages.innerHTML = "";
 
-  if (!chatMessages.length) {
+  if (!visibleChatMessages.length) {
     elements.chatMessages.appendChild(
       createUiElement(
         "div",
@@ -1361,7 +1413,7 @@ function renderChatPanel(appState, elements) {
       )
     );
   } else {
-    chatMessages.forEach((entry) => {
+    visibleChatMessages.forEach((entry) => {
       const item = createUiElement(
         "div",
         "rounded-2xl border border-outline-variant/10 bg-surface-container-high/35 px-3 py-2.5 mb-2 last:mb-0"
@@ -1388,7 +1440,6 @@ function renderChatPanel(appState, elements) {
 
   elements.chatSendButton.disabled = !appState.room?.roomCode;
   elements.chatInput.disabled = !appState.room?.roomCode;
-  elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
 }
 
 function buildStatusMessage(state, appState) {
@@ -2267,6 +2318,7 @@ function initializeApp(socket) {
   const rerender = () => {
     renderApp(appState, elements);
     saveActiveSession(appState);
+    scheduleChatBubbleExpiry(appState, rerender);
   };
   const persistSession = () => {
     saveActiveSession(appState);
