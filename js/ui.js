@@ -61,16 +61,16 @@ function getSessionStorages() {
   const storages = [];
 
   try {
-    if (window.localStorage) {
-      storages.push(window.localStorage);
+    if (window.sessionStorage) {
+      storages.push(window.sessionStorage);
     }
   } catch (_error) {
     // Ignore storage access failures and fall back to any available storage.
   }
 
   try {
-    if (window.sessionStorage && !storages.includes(window.sessionStorage)) {
-      storages.push(window.sessionStorage);
+    if (window.localStorage && !storages.includes(window.localStorage)) {
+      storages.push(window.localStorage);
     }
   } catch (_error) {
     // Ignore storage access failures and fall back to any available storage.
@@ -1035,7 +1035,7 @@ function renderOpponentHud(state, appState, elements) {
 function renderBoardRows(state, appState, elements) {
   const rotations = ["-rotate-1", "rotate-1", "rotate-2", "-rotate-2", "rotate-1"];
   const manualChoice = state.manualChoice;
-  const canChooseRow = Boolean(manualChoice?.isChooser);
+  const canChooseRow = Boolean(manualChoice?.isChooser && !state.reconnectPause?.paused);
   const allowedRowIds = new Set(manualChoice?.allowedRowIds ?? []);
 
   elements.boardRows.innerHTML = "";
@@ -2521,7 +2521,18 @@ function initializeApp(socket) {
   elements.boardRows.addEventListener("click", (event) => {
     const rowElement = event.target.closest("[data-row-id]");
 
-    if (!rowElement || !appState.serverState?.manualChoice?.isChooser) {
+    if (!rowElement) {
+      return;
+    }
+
+    if (appState.serverState?.reconnectPause?.paused) {
+      appState.transientStatus =
+        appState.serverState.reconnectPause.message || "플레이어의 재접속을 기다리는 중입니다.";
+      rerender();
+      return;
+    }
+
+    if (!appState.serverState?.manualChoice?.isChooser) {
       return;
     }
 

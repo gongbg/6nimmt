@@ -848,6 +848,10 @@ io.on("connection", (socket) => {
         throw new Error("Room is full.");
       }
 
+      if (room.gameState) {
+        throw new Error("Game already started. Refresh the original tab to reconnect.");
+      }
+
       if (!nickname || typeof nickname !== "string") {
         throw new Error("nickname is required.");
       }
