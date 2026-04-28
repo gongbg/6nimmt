@@ -7,6 +7,7 @@ import {
   prepareRound,
   cloneCard,
   findPlacementRowIndex,
+  ROUND_PHASES,
 } from "./js/gameLogic.js";
 
 const app = express();
@@ -23,7 +24,7 @@ const MAX_PLAYERS_PER_ROOM = 4;
 const MAX_CHAT_MESSAGES = 30;
 const TURN_STEP_DELAY_MS = 900;
 const AI_PLACEMENT_DELAY_MS = 1500;
-const RECONNECT_GRACE_MS = 5 * 60 * 1000;
+const RECONNECT_GRACE_MS = 60 * 1000;
 const AVATAR_SKIN_COLORS = [
   "#ffb59f",
   "#f4c27b",
@@ -109,6 +110,8 @@ function createPlayer({ socketId = null, nickname, isBot = false }) {
     isBot,
     avatar: isBot ? null : normalizeAvatarInput(null, avatarSeed),
     disconnectTimerId: null,
+    disconnectedAt: null,
+    reconnectExpiresAt: null,
   };
 }
 
@@ -129,6 +132,47 @@ function createRoom({ ownerPlayer, mode }) {
   return room;
 }
 
+function getReconnectingPlayers(room) {
+  return room.players.filter((player) => !player.isBot && !player.socketId);
+}
+
+function isRoomPausedForReconnect(room) {
+  return getReconnectingPlayers(room).length > 0;
+}
+
+function buildReconnectPauseState(room) {
+  const waitingPlayers = getReconnectingPlayers(room);
+
+  if (!waitingPlayers.length) {
+    return null;
+  }
+
+  const names = waitingPlayers.map((player) => player.nickname).join(", ");
+
+  return {
+    paused: true,
+    waitingPlayerIds: waitingPlayers.map((player) => player.id),
+    waitingPlayers: waitingPlayers.map((player) => ({
+      id: player.id,
+      nickname: player.nickname,
+      disconnectedAt: player.disconnectedAt,
+      reconnectExpiresAt: player.reconnectExpiresAt,
+    })),
+    message: `${names}님의 연결이 끊겼습니다. 재접속을 기다립니다.`,
+    gracePeriodMs: RECONNECT_GRACE_MS,
+  };
+}
+
+function getReconnectPauseMessage(room) {
+  return buildReconnectPauseState(room)?.message ?? "플레이어의 재접속을 기다리는 중입니다.";
+}
+
+function assertRoomCanProgress(room) {
+  if (isRoomPausedForReconnect(room)) {
+    throw new Error(getReconnectPauseMessage(room));
+  }
+}
+
 function getRoomPlayersForState(room) {
   return room.players.map((player) => ({
     id: player.id,
@@ -136,6 +180,9 @@ function getRoomPlayersForState(room) {
     isBot: player.isBot,
     avatar: player.avatar ? { ...player.avatar } : null,
     connected: Boolean(player.isBot || player.socketId),
+    reconnecting: Boolean(!player.isBot && !player.socketId),
+    disconnectedAt: player.disconnectedAt,
+    reconnectExpiresAt: player.reconnectExpiresAt,
   }));
 }
 
@@ -150,6 +197,7 @@ function buildRoomSummary(room) {
     players: getRoomPlayersForState(room),
     chatMessages: chatMessages.map((message) => ({ ...message })),
     hasGameStarted: Boolean(room.gameState),
+    reconnectPause: buildReconnectPauseState(room),
   };
 }
 
@@ -228,6 +276,8 @@ function buildSubmissionStatus(room) {
       isBot: player.isBot,
       submitted: false,
       waitingForPlacement: false,
+      connected: Boolean(player.isBot || player.socketId),
+      reconnecting: Boolean(!player.isBot && !player.socketId),
     }));
   }
 
@@ -237,6 +287,8 @@ function buildSubmissionStatus(room) {
     isBot: player.isBot,
     submitted: Boolean(room.gameState.round.selectedCardsByPlayer[player.id]),
     waitingForPlacement: room.manualChoice?.playerId === player.id,
+    connected: Boolean(player.isBot || player.socketId),
+    reconnecting: Boolean(!player.isBot && !player.socketId),
   }));
 }
 
@@ -327,11 +379,19 @@ function sanitizeGameStateForPlayer(room, viewerPlayerId) {
 
   const state = room.gameState.toJSON();
 
-  state.players = state.players.map((player) => ({
-    ...player,
-    hand: player.id === viewerPlayerId ? player.hand.map(cloneCard) : [],
-    handCount: room.gameState.getPlayer(player.id)?.hand.length ?? player.hand.length,
-  }));
+  state.players = state.players.map((player) => {
+    const roomPlayer = room.players.find((currentPlayer) => currentPlayer.id === player.id);
+
+    return {
+      ...player,
+      hand: player.id === viewerPlayerId ? player.hand.map(cloneCard) : [],
+      handCount: room.gameState.getPlayer(player.id)?.hand.length ?? player.hand.length,
+      connected: Boolean(roomPlayer?.isBot || roomPlayer?.socketId),
+      reconnecting: Boolean(roomPlayer && !roomPlayer.isBot && !roomPlayer.socketId),
+      disconnectedAt: roomPlayer?.disconnectedAt ?? null,
+      reconnectExpiresAt: roomPlayer?.reconnectExpiresAt ?? null,
+    };
+  });
   state.round.selectedCardsByPlayer = Object.fromEntries(
     Object.entries(state.round.selectedCardsByPlayer).map(([playerId, card]) => [
       playerId,
@@ -375,6 +435,7 @@ function sanitizeGameStateForPlayer(room, viewerPlayerId) {
 
   state.submissionStatus = buildSubmissionStatus(room);
   state.manualChoice = buildManualChoiceState(room, viewerPlayerId);
+  state.reconnectPause = buildReconnectPauseState(room);
 
   return state;
 }
@@ -440,12 +501,115 @@ function maybeDeleteRoom(roomCode) {
   }
 
   if (room.players.length === 0) {
-    if (room.resolutionTimerId) {
-      clearTimeout(room.resolutionTimerId);
-    }
+    clearRoomResolutionTimer(room);
 
     delete rooms[roomCode];
   }
+}
+
+function clearRoomResolutionTimer(room) {
+  if (room.resolutionTimerId) {
+    clearTimeout(room.resolutionTimerId);
+    room.resolutionTimerId = null;
+  }
+}
+
+function markPlayerOnline(player, socketId) {
+  if (player.disconnectTimerId) {
+    clearTimeout(player.disconnectTimerId);
+  }
+
+  player.socketId = socketId;
+  player.disconnectTimerId = null;
+  player.disconnectedAt = null;
+  player.reconnectExpiresAt = null;
+}
+
+function finishRoundAfterForfeit(room) {
+  if (!room.gameState) {
+    return;
+  }
+
+  clearRoomResolutionTimer(room);
+  room.manualChoice = null;
+  room.gameState.round.selectedCardsByPlayer = {};
+  room.gameState.round.pendingResolution = null;
+  room.gameState.round.phase = ROUND_PHASES.FINISHED;
+
+  if (!room.gameState.round.hasScored) {
+    room.gameState.round.finalScores = room.gameState.players.map((player) => {
+      const roundPenaltyPoints = player.penaltyPoints;
+      player.totalPenaltyPoints += roundPenaltyPoints;
+
+      return {
+        playerId: player.id,
+        roundPenaltyPoints,
+        totalPenaltyPoints: player.totalPenaltyPoints,
+      };
+    });
+    room.gameState.round.hasScored = true;
+  }
+}
+
+function handleGracePeriodExpired(room, playerId) {
+  const player = room.players.find((currentPlayer) => currentPlayer.id === playerId);
+
+  if (!player || player.socketId) {
+    return;
+  }
+
+  const pendingResolutionHasPlayer = Boolean(
+    room.gameState?.round?.pendingResolution?.steps?.some((step) => step.playerId === playerId)
+  );
+  const removedPlayer = removePlayerById(room, playerId);
+
+  if (!removedPlayer) {
+    return;
+  }
+
+  appendChatMessage(room, {
+    message: `${removedPlayer.nickname}님이 제한 시간 내 재접속하지 않아 퇴장 처리되었습니다.`,
+    isSystem: true,
+  });
+
+  const remainingHumans = getHumanPlayers(room).length;
+
+  if (remainingHumans === 0) {
+    clearRoomResolutionTimer(room);
+    room.players = [];
+    maybeDeleteRoom(room.code);
+    return;
+  }
+
+  if (room.gameState && (pendingResolutionHasPlayer || (room.mode !== "ai" && remainingHumans < 2))) {
+    finishRoundAfterForfeit(room);
+    appendChatMessage(room, {
+      message: "재접속 유예 시간이 지나 게임을 종료했습니다.",
+      isSystem: true,
+    });
+  }
+
+  emitRoomSummary(room);
+  emitStateToRoom(room);
+  emitChatMessages(room);
+  maybeDeleteRoom(room.code);
+}
+
+function markPlayerDisconnected(room, player) {
+  const disconnectedAt = Date.now();
+
+  // Keep the player in the room by stable player id; only the volatile socket id is cleared.
+  player.socketId = null;
+  player.disconnectedAt = disconnectedAt;
+  player.reconnectExpiresAt = disconnectedAt + RECONNECT_GRACE_MS;
+
+  // Stop delayed resolution work while a human player is inside the reconnect grace period.
+  clearRoomResolutionTimer(room);
+
+  appendChatMessage(room, {
+    message: `${player.nickname}님의 연결이 끊겼습니다. 재접속을 기다립니다.`,
+    isSystem: true,
+  });
 }
 
 function removePlayerFromRoom(room, socketId) {
@@ -512,13 +676,10 @@ function scheduleDisconnectedPlayerRemoval(room, playerId) {
     clearTimeout(player.disconnectTimerId);
   }
 
+  const timeoutMs = Math.max(0, (player.reconnectExpiresAt ?? Date.now() + RECONNECT_GRACE_MS) - Date.now());
   player.disconnectTimerId = setTimeout(() => {
-    player.disconnectTimerId = null;
-    removePlayerById(room, playerId);
-    emitRoomSummary(room);
-    emitStateToRoom(room);
-    maybeDeleteRoom(room.code);
-  }, RECONNECT_GRACE_MS);
+    handleGracePeriodExpired(room, playerId);
+  }, timeoutMs);
 }
 
 function syncPlayerAvatar(room, playerId, avatar) {
@@ -536,6 +697,12 @@ function syncPlayerAvatar(room, playerId, avatar) {
 }
 
 function queueNextResolutionStep(room) {
+  if (isRoomPausedForReconnect(room)) {
+    room.resolutionTimerId = null;
+    emitStateToRoom(room);
+    return;
+  }
+
   if (!room.gameState || !room.gameState.round.pendingResolution) {
     room.resolutionTimerId = null;
     room.manualChoice = null;
@@ -559,6 +726,12 @@ function queueNextResolutionStep(room) {
     emitStateToRoom(room);
     room.resolutionTimerId = setTimeout(() => {
       try {
+        if (isRoomPausedForReconnect(room)) {
+          room.resolutionTimerId = null;
+          emitStateToRoom(room);
+          return;
+        }
+
         const botStep = getCurrentPendingStep(room);
 
         if (!botStep) {
@@ -591,6 +764,21 @@ function startResolutionIfReady(room) {
   }
 
   queueNextResolutionStep(room);
+}
+
+function resumeRoomProgressIfReady(room) {
+  if (isRoomPausedForReconnect(room)) {
+    emitRoomSummary(room);
+    emitStateToRoom(room);
+    return;
+  }
+
+  emitRoomSummary(room);
+  emitStateToRoom(room);
+
+  if (room.gameState?.round?.pendingResolution && !room.manualChoice && !room.resolutionTimerId) {
+    queueNextResolutionStep(room);
+  }
 }
 
 function findRoomBySocketId(socketId) {
@@ -705,16 +893,19 @@ io.on("connection", (socket) => {
         throw new Error("Player session not found.");
       }
 
-      if (player.disconnectTimerId) {
-        clearTimeout(player.disconnectTimerId);
-        player.disconnectTimerId = null;
-      }
-
-      player.socketId = socket.id;
+      const wasReconnecting = !player.socketId || Boolean(player.disconnectTimerId);
+      markPlayerOnline(player, socket.id);
       socket.join(room.code);
 
-      emitRoomSummary(room);
-      emitStateToRoom(room);
+      if (wasReconnecting) {
+        appendChatMessage(room, {
+          message: `${player.nickname}님이 재접속했습니다.`,
+          isSystem: true,
+        });
+        emitChatMessages(room);
+      }
+
+      resumeRoomProgressIfReady(room);
       callback({
         ok: true,
         playerId: player.id,
@@ -777,6 +968,8 @@ io.on("connection", (socket) => {
         throw new Error("Room not found.");
       }
 
+      assertRoomCanProgress(room);
+
       const player = room.players.find((currentPlayer) => currentPlayer.socketId === socket.id);
 
       if (!player) {
@@ -817,6 +1010,8 @@ io.on("connection", (socket) => {
       if (!room || !room.gameState) {
         throw new Error("Active game room not found.");
       }
+
+      assertRoomCanProgress(room);
 
       const player = room.players.find((currentPlayer) => currentPlayer.socketId === socket.id);
 
@@ -898,6 +1093,8 @@ io.on("connection", (socket) => {
         throw new Error("Active game room not found.");
       }
 
+      assertRoomCanProgress(room);
+
       const player = room.players.find((currentPlayer) => currentPlayer.socketId === socket.id);
 
       if (!player) {
@@ -964,6 +1161,8 @@ io.on("connection", (socket) => {
       if (!room || !room.gameState) {
         throw new Error("Active game room not found.");
       }
+
+      assertRoomCanProgress(room);
 
       if (!room.manualChoice) {
         throw new Error("There is no row choice pending.");
@@ -1033,10 +1232,11 @@ io.on("connection", (socket) => {
       return;
     }
 
-    disconnectedPlayer.socketId = null;
+    markPlayerDisconnected(room, disconnectedPlayer);
     scheduleDisconnectedPlayerRemoval(room, disconnectedPlayer.id);
     emitRoomSummary(room);
     emitStateToRoom(room);
+    emitChatMessages(room);
   });
 });
 

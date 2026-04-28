@@ -688,6 +688,7 @@ function getUiElements() {
     mainContent: document.getElementById("main-content"),
     gameLogSidebar: document.getElementById("game-log-sidebar"),
     gameSidebar: document.getElementById("game-sidebar"),
+    brandRefreshButton: document.getElementById("brand-refresh-button"),
     connectionBadge: document.getElementById("connection-badge"),
     leaveGameButton: document.getElementById("leave-game-button"),
     lobbyScreen: document.getElementById("lobby-screen"),
@@ -883,11 +884,13 @@ function renderLobby(appState, elements) {
 }
 
 function createRoomPlayerBadge(player, isHost, isSelf, canEdit) {
+  const isReconnecting = Boolean(!player.isBot && player.connected === false);
   const card = createUiElement(
     isSelf && canEdit ? "button" : "div",
     [
       "rounded-[1.25rem] border border-outline-variant/15 bg-surface-container-lowest/70 px-4 py-4 flex items-center justify-between gap-4",
       isSelf && canEdit ? "transition-transform active:scale-[0.98]" : "",
+      isReconnecting ? "opacity-70" : "",
     ]
       .filter(Boolean)
       .join(" ")
@@ -909,7 +912,7 @@ function createRoomPlayerBadge(player, isHost, isSelf, canEdit) {
     createUiElement(
       "p",
       "text-sm text-on-surface-variant",
-      player.isBot ? "Bot Player" : "Human Player"
+      player.isBot ? "Bot Player" : isReconnecting ? "재접속 대기 중" : "Human Player"
     )
   );
 
@@ -984,7 +987,7 @@ function renderOpponentHud(state, appState, elements) {
     }
 
     slot.style.display = "";
-    name.textContent = player.nickname;
+    name.textContent = player.connected === false ? `${player.nickname} (재접속 대기)` : player.nickname;
     hand.textContent = String(player.handCount ?? player.hand?.length ?? 0);
     penalty.textContent = String(getDisplayPenaltyPoints(player, state.round));
 
@@ -1156,6 +1159,7 @@ function renderPlayerHand(state, appState, elements) {
   const hand = [...(currentPlayer?.hand ?? [])].sort((left, right) => left.number - right.number);
   const isResolving = Boolean(state.round.pendingResolution);
   const isChoosingRow = Boolean(state.manualChoice);
+  const isReconnectPaused = Boolean(state.reconnectPause?.paused);
   const submittedOrPending =
     Boolean(state.round.selectedCardsByPlayer?.[appState.playerId]) || appState.pendingSubmit;
 
@@ -1168,7 +1172,12 @@ function renderPlayerHand(state, appState, elements) {
         rotate: 0,
         offset: 0,
         overlap: 0,
-        disabled: isResolving || isChoosingRow || submittedOrPending || state.round.phase === "finished",
+        disabled:
+          isReconnectPaused ||
+          isResolving ||
+          isChoosingRow ||
+          submittedOrPending ||
+          state.round.phase === "finished",
       })
     );
   });
@@ -1206,16 +1215,23 @@ function renderPlayerStatePanel(state, appState, elements) {
       isBot: player.isBot,
       submitted: false,
       waitingForPlacement: false,
+      connected: player.connected !== false,
+      reconnecting: Boolean(player.reconnecting || player.connected === false),
     };
     const isSelf = player.id === appState.playerId;
     const penaltyPoints = getDisplayPenaltyPoints(player, state.round);
     const submitted = isSelf ? entry.submitted || appState.pendingSubmit : entry.submitted;
-    const badgeClass = entry.waitingForPlacement
+    const reconnecting = Boolean(entry.reconnecting || player.reconnecting || player.connected === false);
+    const badgeClass = reconnecting
+      ? "border-error-container/25 bg-error-container/10 text-error"
+      : entry.waitingForPlacement
       ? "border-primary/25 bg-primary/10 text-primary"
       : submitted
         ? "border-secondary/25 bg-secondary/10 text-secondary"
         : "border-outline-variant/20 bg-surface-container-lowest text-on-surface-variant";
-    const badgeText = entry.waitingForPlacement
+    const badgeText = reconnecting
+      ? "재접속 대기"
+      : entry.waitingForPlacement
       ? "행 선택 중"
       : submitted
         ? "제출 완료"
@@ -1339,6 +1355,10 @@ function buildStatusMessage(state, appState) {
     return appState.transientStatus;
   }
 
+  if (state.reconnectPause?.paused) {
+    return state.reconnectPause.message || "플레이어의 연결이 끊겼습니다. 재접속을 기다립니다.";
+  }
+
   if (state.manualChoice) {
     if (state.manualChoice.isChooser) {
       return "내 턴입니다! 어디에 놓을지 선택하세요";
@@ -1377,11 +1397,13 @@ function renderStatus(state, appState, elements) {
   const submittedOrPending = submitted || appState.pendingSubmit;
   const isResolving = Boolean(state.round.pendingResolution);
   const isChoosingRow = Boolean(state.manualChoice?.isChooser);
+  const isReconnectPaused = Boolean(state.reconnectPause?.paused);
   const isMyTurnActionable =
     Boolean(currentPlayer) &&
     state.round.phase !== "finished" &&
-    isChoosingRow;
-  const shouldShowTurnNotice = isChoosingRow;
+    isChoosingRow &&
+    !isReconnectPaused;
+  const shouldShowTurnNotice = isChoosingRow && !isReconnectPaused;
 
   elements.roundIndicator.textContent = `Round ${state.round.number} • Turn ${displayedTurn} / 10`;
   elements.statusMessage.textContent = buildStatusMessage(state, appState);
@@ -1390,8 +1412,10 @@ function renderStatus(state, appState, elements) {
   );
   elements.phaseIndicator.textContent = state.round.phase;
   elements.deckCount.textContent = String(state.deck.length);
-  elements.selectionIndicator.textContent = isChoosingRow
-    ? "행 선택"
+  elements.selectionIndicator.textContent = isReconnectPaused
+    ? "재접속 대기"
+    : isChoosingRow
+      ? "행 선택"
     : isResolving
       ? "처리 중"
       : submittedOrPending
@@ -1403,6 +1427,7 @@ function renderStatus(state, appState, elements) {
   elements.restartButton.disabled =
     !appState.room ||
     appState.room.hostPlayerId !== appState.playerId ||
+    isReconnectPaused ||
     isResolving ||
     Boolean(state.manualChoice);
 
@@ -1954,6 +1979,7 @@ async function handleSubmitCard(appState, elements, cardNumber = appState.select
     !Number.isInteger(normalizedCardNumber) ||
     normalizedCardNumber < 1 ||
     normalizedCardNumber > 104 ||
+    Boolean(state.reconnectPause?.paused) ||
     Boolean(state.manualChoice) ||
     Boolean(state.round.pendingResolution) ||
     state.round.phase === "finished"
@@ -1986,7 +2012,11 @@ async function handleSubmitCard(appState, elements, cardNumber = appState.select
 }
 
 async function handleChooseRow(appState, elements, rowId) {
-  if (!appState.room?.roomCode || !appState.serverState?.manualChoice?.isChooser) {
+  if (
+    !appState.room?.roomCode ||
+    appState.serverState?.reconnectPause?.paused ||
+    !appState.serverState?.manualChoice?.isChooser
+  ) {
     return;
   }
 
@@ -2204,12 +2234,21 @@ function initializeApp(socket) {
   window.addEventListener("pagehide", persistSession);
   window.addEventListener("beforeunload", persistSession);
 
+  elements.brandRefreshButton?.addEventListener("click", () => {
+    saveActiveSession(appState);
+    window.location.reload();
+  });
+
   socket.on("connect", () => {
     appState.connectionStatus = "connected";
-    if (appState.isRestoringSession) {
+    if (appState.playerId && appState.room?.roomCode) {
+      // Socket.IO may reconnect with a new socket.id; re-bind it to the saved player id.
+      appState.isRestoringSession = true;
       rerender();
+      handleResumeSession(appState, elements);
       return;
     }
+
     appState.lobbyStatus = "서버에 연결되었습니다. 닉네임을 입력하고 시작하세요.";
     rerender();
   });
@@ -2220,13 +2259,7 @@ function initializeApp(socket) {
     rerender();
   });
 
-  socket.on("connect", () => {
-    if (appState.isRestoringSession) {
-      handleResumeSession(appState, elements);
-    }
-  });
-
-  if (appState.isRestoringSession && socket.connected) {
+  if (appState.playerId && appState.room?.roomCode && socket.connected) {
     handleResumeSession(appState, elements);
   }
 
@@ -2237,7 +2270,10 @@ function initializeApp(socket) {
       Boolean(appState.serverState?.round) &&
       room.hasGameStarted;
 
-    if (room.hasGameStarted) {
+    if (room.reconnectPause?.paused) {
+      appState.roomStatus =
+        room.reconnectPause.message || "플레이어의 연결이 끊겼습니다. 재접속을 기다립니다.";
+    } else if (room.hasGameStarted) {
       appState.roomStatus = "게임이 시작되었습니다.";
     } else if (!keepHydratedGameState) {
       appState.serverState = null;
