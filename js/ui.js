@@ -39,13 +39,6 @@ const CLEANUP_ANNOUNCEMENT_BUILDERS = [
   (name) => `배고픈 ${name}`,
 ];
 
-const BULL_HEAD_SVG = `
-  <svg viewBox="0 0 64 64" aria-hidden="true" class="bull-icon" fill="currentColor">
-    <path d="M15 12c-5 2-8 7-8 12 0 4 2 7 5 9 2-4 4-7 8-8-1-4-3-8-5-13Zm34 0c-2 5-4 9-5 13 4 1 6 4 8 8 3-2 5-5 5-9 0-5-3-10-8-12Z"></path>
-    <path d="M20 28c0-8 5-15 12-15s12 7 12 15c0 4 3 7 3 12 0 8-7 14-15 14S17 48 17 40c0-5 3-8 3-12Zm8 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6Zm8 0a3 3 0 1 0 0 6 3 3 0 0 0 0-6Zm-8 16h8l-4-6-4 6Z"></path>
-  </svg>
-`;
-
 function createUiElement(tagName, className = "", textContent = "") {
   const element = document.createElement(tagName);
 
@@ -318,58 +311,6 @@ function normalizeCardVisualInput(cardOrNumber) {
   };
 }
 
-function getBullHeadSvgMarkup(tier) {
-  const byTier = {
-    safe: `
-      <svg viewBox="0 0 64 64" aria-hidden="true" class="bull-icon" fill="none">
-        <path d="M17 22c-5-4-7-9-7-14 5 1 10 4 13 8-1 2-3 4-6 6Z" fill="currentColor"></path>
-        <path d="M47 22c3-2 5-4 6-6 3-4 8-7 13-8 0 5-2 10-7 14-3-2-5-4-6-6Z" fill="currentColor"></path>
-        <path d="M32 15c10 0 18 8 18 18 0 11-7 19-18 19s-18-8-18-19c0-10 8-18 18-18Z" fill="currentColor"></path>
-        <path d="M19 24c4-6 8-8 13-8s9 2 13 8" stroke="rgba(255,255,255,0.18)" stroke-width="2.2" stroke-linecap="round"></path>
-        <path d="M23 44c3 2 15 2 18 0" stroke="rgba(0,0,0,0.08)" stroke-width="3" stroke-linecap="round"></path>
-      </svg>
-    `,
-    caution: `
-      <svg viewBox="0 0 64 64" aria-hidden="true" class="bull-icon" fill="none">
-        <path d="M16 22c-5-4-8-9-8-14 6 2 11 4 14 8-1 2-3 4-6 6Z" fill="currentColor"></path>
-        <path d="M48 22c3-2 5-4 6-6 3-4 8-6 14-8 0 5-3 10-8 14-3-2-5-4-6-6Z" fill="currentColor"></path>
-        <path d="M32 14c10.5 0 18.5 8 18.5 18.5S43 52 32 52 13.5 43.5 13.5 32.5 21.5 14 32 14Z" fill="currentColor"></path>
-        <path d="M19 24c4-6 8-8 13-8s9 2 13 8" stroke="rgba(255,255,255,0.14)" stroke-width="2.1" stroke-linecap="round"></path>
-        <path d="M22.5 44c3 1.5 16 1.5 19 0" stroke="rgba(0,0,0,0.1)" stroke-width="3" stroke-linecap="round"></path>
-      </svg>
-    `,
-    warning: `
-      <svg viewBox="0 0 64 64" aria-hidden="true" class="bull-icon" fill="none">
-        <path d="M15 22c-6-4-9-9-9-14 6 2 12 4 15 8-2 2-4 4-6 6Z" fill="currentColor"></path>
-        <path d="M49 22c2-2 4-4 6-6 3-4 9-6 15-8 0 5-3 10-9 14-2-2-4-4-6-6Z" fill="currentColor"></path>
-        <path d="M32 13c11 0 19 8 19 19 0 12-7.5 20-19 20S13 44 13 32c0-11 8-19 19-19Z" fill="currentColor"></path>
-        <path d="M18.5 24c4.5-6.5 8.5-8.5 13.5-8.5s9 2 13.5 8.5" stroke="rgba(255,255,255,0.12)" stroke-width="2" stroke-linecap="round"></path>
-        <path d="M22 44.5c3.5 1.5 16.5 1.5 20 0" stroke="rgba(0,0,0,0.12)" stroke-width="3" stroke-linecap="round"></path>
-      </svg>
-    `,
-    danger: `
-      <svg viewBox="0 0 64 64" aria-hidden="true" class="bull-icon" fill="none">
-        <path d="M15 22c-6-4-9-9-9-14 6 2 12 4 15 8-2 2-4 4-6 6Z" fill="currentColor"></path>
-        <path d="M49 22c2-2 4-4 6-6 3-4 9-6 15-8 0 5-3 10-9 14-2-2-4-4-6-6Z" fill="currentColor"></path>
-        <path d="M32 13c11 0 19 8 19 19 0 12-7.5 20-19 20S13 44 13 32c0-11 8-19 19-19Z" fill="currentColor"></path>
-        <path d="M18.5 24c4.5-6.5 8.5-8.5 13.5-8.5s9 2 13.5 8.5" stroke="rgba(255,255,255,0.12)" stroke-width="2" stroke-linecap="round"></path>
-        <path d="M22 44.5c3.5 1.5 16.5 1.5 20 0" stroke="rgba(0,0,0,0.12)" stroke-width="3" stroke-linecap="round"></path>
-      </svg>
-    `,
-    disaster: `
-      <svg viewBox="0 0 64 64" aria-hidden="true" class="bull-icon" fill="none">
-        <path d="M14 22c-6-4-10-9-10-15 7 2 13 5 16 9-2 2-4 4-6 6Z" fill="currentColor"></path>
-        <path d="M50 22c2-2 4-4 6-6 3-4 9-7 16-9 0 6-4 11-10 15-2-2-4-4-6-6Z" fill="currentColor"></path>
-        <path d="M32 12c11.5 0 19.5 8.5 19.5 19.5S44 52.5 32 52.5 12.5 43.5 12.5 31.5 20.5 12 32 12Z" fill="currentColor"></path>
-        <path d="M18 24c5-7 9-9 14-9s9 2 14 9" stroke="rgba(255,255,255,0.1)" stroke-width="2" stroke-linecap="round"></path>
-        <path d="M21.5 45c4 1.6 17 1.6 21 0" stroke="rgba(0,0,0,0.12)" stroke-width="3" stroke-linecap="round"></path>
-      </svg>
-    `,
-  };
-
-  return byTier[tier] ?? byTier.safe;
-}
-
 function createBullIcon(tierOrClassName = "", className = "") {
   const resolvedClassName = className || tierOrClassName;
   const icon = createUiElement(
@@ -379,30 +320,6 @@ function createBullIcon(tierOrClassName = "", className = "") {
   );
   icon.style.fontVariationSettings = "'FILL' 1";
   return icon;
-}
-
-function getBullGridColumns(penalty) {
-  if (penalty <= 1) {
-    return 1;
-  }
-
-  if (penalty === 2) {
-    return 2;
-  }
-
-  if (penalty === 3) {
-    return 3;
-  }
-
-  if (penalty === 5) {
-    return 5;
-  }
-
-  if (penalty === 7) {
-    return 4;
-  }
-
-  return 3;
 }
 
 function createPenaltyIconRow(penalty, isActive, isBottom = false) {
@@ -488,62 +405,6 @@ function createPenaltyIconRow(penalty, isActive, isBottom = false) {
   return row;
 }
 
-function createBullCluster(card, compact = false) {
-  const normalizedCard = normalizeCardVisualInput(card);
-  const tier = getPenaltyTier(normalizedCard.penalty);
-  const wrapper = createUiElement(
-    "div",
-    [
-      "card-bull-grid",
-      `card-bull-grid-${normalizedCard.penalty}`,
-      compact ? "card-bull-grid-compact" : "",
-      `card-bull-tier-${tier}`,
-    ]
-      .filter(Boolean)
-      .join(" ")
-  );
-
-  wrapper.style.setProperty("--bull-columns", String(getBullGridColumns(normalizedCard.penalty)));
-
-  for (let count = 0; count < normalizedCard.penalty; count += 1) {
-    wrapper.appendChild(createBullIcon(tier, compact ? "text-[18px] sm:text-[20px]" : "text-[22px] lg:text-[24px]"));
-  }
-
-  return wrapper;
-}
-
-function createCardFace(card, options = {}) {
-  const normalizedCard = normalizeCardVisualInput(card);
-  const { compact = false, selected = false } = options;
-  const tier = getPenaltyTier(normalizedCard.penalty);
-  const face = createUiElement(
-    "div",
-    [
-      "card-face",
-      `card-tier-${tier}`,
-      compact ? "card-face-compact" : "",
-      selected ? "card-face-selected" : "",
-    ]
-      .filter(Boolean)
-      .join(" ")
-  );
-  const body = createUiElement(
-    "div",
-    compact ? "card-body card-body-compact card-body-minimal" : "card-body card-body-minimal"
-  );
-  const bullCluster = createBullCluster(normalizedCard, compact);
-  const numberDisplay = createUiElement(
-    "span",
-    compact ? "card-number-display card-number-display-compact" : "card-number-display",
-    String(normalizedCard.number)
-  );
-  numberDisplay.dataset.digitCount = String(normalizedCard.number).length;
-  body.append(bullCluster, numberDisplay);
-
-  face.append(body);
-  return face;
-}
-
 function createTableCard(card, rotateClass = "") {
   const normalizedCard = normalizeCardVisualInput(card);
   const tier = getPenaltyTier(normalizedCard.penalty);
@@ -594,8 +455,8 @@ function createTableCard(card, rotateClass = "") {
   cardElement.dataset.penalty = String(normalizedCard.penalty);
   cardElement.append(
     createPenaltyIconRow(normalizedCard.penalty, false, false),
-      createUiElement(
-        "span",
+    createUiElement(
+      "span",
       `mt-auto mb-[0.16rem] lg:mb-[0.26rem] translate-y-[0.06rem] lg:translate-y-[0.1rem] font-headline font-bold text-lg lg:text-[1.55rem] ${palette.number}`,
       String(normalizedCard.number)
     )
@@ -652,44 +513,44 @@ function createHandCard(card, options = {}) {
   };
   const palette = handCardPaletteByTier[tier];
   const {
-        selected = false,
-        rotate = 0,
+    selected = false,
+    rotate = 0,
     offset = 0,
     overlap = 0,
-      disabled = false,
-      compact = false,
-      highlighted = false,
-      dimmed = false,
-      } = options;
+    disabled = false,
+    compact = false,
+    highlighted = false,
+    dimmed = false,
+  } = options;
 
-    const sizeClass = compact
-      ? selected
-        ? "w-[2.9rem] h-[4.25rem] lg:w-[3.9rem] lg:h-[5.8rem]"
-        : "w-10 h-14 lg:w-[3.5rem] lg:h-[5rem]"
-      : selected
-        ? "w-[3.25rem] h-[4.85rem] lg:w-[5.15rem] lg:h-[7.7rem]"
-        : "w-12 h-16 lg:w-[4.5rem] lg:h-[6.35rem]";
-      const cardElement = createUiElement(
-      "button",
-      [
-        compact ? "reveal-card" : "hand-card",
-        sizeClass,
-        "rounded-xl flex flex-col justify-between items-center border relative overflow-hidden",
-        glowClass,
-        selected
-          ? `${palette.active} py-1 lg:py-1.5 z-20 cursor-pointer`
-          : `${palette.idle} py-1 lg:py-1.5 z-10 cursor-pointer`,
-        highlighted && !selected ? "ring-2 ring-primary/70" : "",
-        dimmed ? "opacity-45" : "",
-      ]
-        .filter(Boolean)
-        .join(" ")
-    );
+  const sizeClass = compact
+    ? selected
+      ? "w-[2.9rem] h-[4.25rem] lg:w-[3.9rem] lg:h-[5.8rem]"
+      : "w-10 h-14 lg:w-[3.5rem] lg:h-[5rem]"
+    : selected
+      ? "w-[3.25rem] h-[4.85rem] lg:w-[5.15rem] lg:h-[7.7rem]"
+      : "w-12 h-16 lg:w-[4.5rem] lg:h-[6.35rem]";
+  const cardElement = createUiElement(
+    "button",
+    [
+      compact ? "reveal-card" : "hand-card",
+      sizeClass,
+      "rounded-xl flex flex-col justify-between items-center border relative overflow-hidden",
+      glowClass,
+      selected
+        ? `${palette.active} py-1 lg:py-1.5 z-20 cursor-pointer`
+        : `${palette.idle} py-1 lg:py-1.5 z-10 cursor-pointer`,
+      highlighted && !selected ? "ring-2 ring-primary/70" : "",
+      dimmed ? "opacity-45" : "",
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
 
-      cardElement.type = "button";
-      cardElement.dataset.cardNumber = String(normalizedCard.number);
-      cardElement.dataset.penaltyTier = tier;
-      cardElement.dataset.penalty = String(normalizedCard.penalty);
+  cardElement.type = "button";
+  cardElement.dataset.cardNumber = String(normalizedCard.number);
+  cardElement.dataset.penaltyTier = tier;
+  cardElement.dataset.penalty = String(normalizedCard.penalty);
 
   if (!compact) {
     cardElement.style.setProperty("--card-rotate", `${rotate}deg`);
@@ -701,22 +562,22 @@ function createHandCard(card, options = {}) {
     cardElement.classList.add("active-card");
   }
 
-    if (disabled) {
-      cardElement.disabled = true;
-    }
+  if (disabled) {
+    cardElement.disabled = true;
+  }
 
-    cardElement.append(
-      createPenaltyIconRow(normalizedCard.penalty, selected, false),
-      createUiElement(
-        "span",
-        selected
-          ? `mt-auto mb-[0.18rem] lg:mb-[0.28rem] translate-y-[0.06rem] lg:translate-y-[0.1rem] font-headline font-bold text-lg lg:text-[1.65rem] ${palette.activeNumber}`
-          : `mt-auto mb-[0.16rem] lg:mb-[0.24rem] translate-y-[0.06rem] lg:translate-y-[0.1rem] font-headline font-bold text-base lg:text-[1.45rem] ${palette.idleNumber}`,
-        String(normalizedCard.number)
-      )
-    );
+  cardElement.append(
+    createPenaltyIconRow(normalizedCard.penalty, selected, false),
+    createUiElement(
+      "span",
+      selected
+        ? `mt-auto mb-[0.18rem] lg:mb-[0.28rem] translate-y-[0.06rem] lg:translate-y-[0.1rem] font-headline font-bold text-lg lg:text-[1.65rem] ${palette.activeNumber}`
+        : `mt-auto mb-[0.16rem] lg:mb-[0.24rem] translate-y-[0.06rem] lg:translate-y-[0.1rem] font-headline font-bold text-base lg:text-[1.45rem] ${palette.idleNumber}`,
+      String(normalizedCard.number)
+    )
+  );
 
-    return cardElement;
+  return cardElement;
 }
 
 function createHiddenPendingCard() {
@@ -792,10 +653,10 @@ function createCleanupActor(label) {
 }
 
 function createAppState(socket) {
-    return {
-      socket,
-      connectionStatus: "connecting",
-      playerId: null,
+  return {
+    socket,
+    connectionStatus: "connecting",
+    playerId: null,
     room: null,
     serverState: null,
     selectedCardNumber: null,
@@ -817,10 +678,6 @@ function createAppState(socket) {
     leavingGame: false,
     isRestoringSession: false,
     resumeInFlight: false,
-    lastHandClick: {
-      cardNumber: null,
-      timestamp: 0,
-    },
     leaveGameModalOpen: false,
   };
 }
@@ -851,20 +708,20 @@ function getUiElements() {
     selfProfileButton: document.getElementById("self-profile-button"),
     selfProfileAvatar: document.getElementById("self-profile-avatar"),
     selfProfileName: document.getElementById("self-profile-name"),
-      opponentSlots: Array.from(document.querySelectorAll("[data-opponent-slot]")),
-      boardRows: document.getElementById("board-rows"),
-      cleanupAnnouncement: document.getElementById("cleanup-announcement"),
-      handPanel:
-        document.getElementById("hand-panel") ??
-        document.getElementById("player-hand")?.closest("section") ??
-        null,
-      playerHand: document.getElementById("player-hand"),
-      currentTurnCards: document.getElementById("current-turn-cards"),
-      submitButton: document.getElementById("submit-card-button"),
-      restartButton: document.getElementById("restart-round-button"),
-      roundIndicator: document.getElementById("round-indicator"),
-      turnNotice: document.getElementById("turn-notice"),
-      statusMessage: document.getElementById("status-message"),
+    opponentSlots: Array.from(document.querySelectorAll("[data-opponent-slot]")),
+    boardRows: document.getElementById("board-rows"),
+    cleanupAnnouncement: document.getElementById("cleanup-announcement"),
+    handPanel:
+      document.getElementById("hand-panel") ??
+      document.getElementById("player-hand")?.closest("section") ??
+      null,
+    playerHand: document.getElementById("player-hand"),
+    currentTurnCards: document.getElementById("current-turn-cards"),
+    submitButton: document.getElementById("submit-card-button"),
+    restartButton: document.getElementById("restart-round-button"),
+    roundIndicator: document.getElementById("round-indicator"),
+    turnNotice: document.getElementById("turn-notice"),
+    statusMessage: document.getElementById("status-message"),
     playerPenaltyPoints: document.getElementById("player-penalty-points"),
     phaseIndicator: document.getElementById("phase-indicator"),
     deckCount: document.getElementById("deck-count"),
@@ -1298,6 +1155,9 @@ function renderPlayerHand(state, appState, elements) {
   const currentPlayer = getCurrentPlayer(state, appState.playerId);
   const hand = [...(currentPlayer?.hand ?? [])].sort((left, right) => left.number - right.number);
   const isResolving = Boolean(state.round.pendingResolution);
+  const isChoosingRow = Boolean(state.manualChoice);
+  const submittedOrPending =
+    Boolean(state.round.selectedCardsByPlayer?.[appState.playerId]) || appState.pendingSubmit;
 
   elements.playerHand.innerHTML = "";
 
@@ -1308,64 +1168,9 @@ function renderPlayerHand(state, appState, elements) {
         rotate: 0,
         offset: 0,
         overlap: 0,
-        disabled: isResolving || state.round.phase === "finished",
+        disabled: isResolving || isChoosingRow || submittedOrPending || state.round.phase === "finished",
       })
     );
-  });
-}
-
-function renderSubmissionStatus(state, elements) {
-  if (!elements.submissionStatusList) {
-    return;
-  }
-
-  const statuses = state.submissionStatus ?? [];
-  elements.submissionStatusList.innerHTML = "";
-
-  if (!statuses.length) {
-    elements.submissionStatusList.appendChild(
-      createUiElement(
-        "div",
-        "rounded-2xl border border-outline-variant/15 bg-surface-container-lowest/60 px-4 py-3 text-sm text-on-surface-variant",
-        "아직 제출 정보가 없습니다."
-      )
-    );
-    return;
-  }
-
-  statuses.forEach((entry) => {
-    const badgeClass = entry.waitingForPlacement
-      ? "border-primary/25 bg-primary/10 text-primary"
-      : entry.submitted
-        ? "border-secondary/25 bg-secondary/10 text-secondary"
-        : "border-outline-variant/20 bg-surface-container-lowest text-on-surface-variant";
-    const badgeText = entry.waitingForPlacement
-      ? "🐮 제출완료 🐮"
-      : entry.submitted
-        ? "🐮 제출완료 🐮"
-        : "🐮 고민중 🐮";
-    const row = createUiElement(
-      "div",
-      "rounded-2xl border border-outline-variant/15 bg-surface-container-lowest/65 px-3 py-3 flex items-center justify-between gap-3"
-    );
-    const left = createUiElement("div", "flex items-center gap-3");
-    left.append(
-      createUiElement(
-        "span",
-        entry.isBot ? "material-symbols-outlined text-primary" : "material-symbols-outlined text-secondary",
-        entry.isBot ? "smart_toy" : "person"
-      ),
-      createUiElement("span", "font-semibold text-on-surface", entry.nickname)
-    );
-    row.append(
-      left,
-      createUiElement(
-        "span",
-        `rounded-full border px-3 py-1 text-xs font-black ${badgeClass}`,
-        badgeText
-      )
-    );
-    elements.submissionStatusList.appendChild(row);
   });
 }
 
@@ -1562,11 +1367,7 @@ function buildStatusMessage(state, appState) {
     return "카드를 제출했습니다. 다른 플레이어를 기다리는 중입니다.";
   }
 
-  if (appState.selectedCardNumber !== null) {
-    return `${appState.selectedCardNumber}번 카드를 선택했습니다. 제출 버튼을 누르세요.`;
-  }
-
-  return "카드를 선택하고 제출하세요.";
+  return "제출할 카드를 한 번 클릭하세요.";
 }
 
 function renderStatus(state, appState, elements) {
@@ -1595,19 +1396,10 @@ function renderStatus(state, appState, elements) {
       ? "처리 중"
       : submittedOrPending
         ? "제출 완료"
-        : appState.selectedCardNumber === null
-          ? "대기 중"
-          : `${appState.selectedCardNumber} 선택`;
+        : "카드 클릭";
 
-  elements.submitButton.textContent = submittedOrPending ? "제출 완료!" : "카드 제출";
-  elements.submitButton.disabled =
-    !currentPlayer ||
-    !appState.room?.roomCode ||
-    isResolving ||
-    isChoosingRow ||
-    state.round.phase === "finished" ||
-    appState.selectedCardNumber === null ||
-    submittedOrPending;
+  elements.submitButton.hidden = true;
+  elements.submitButton.disabled = true;
   elements.restartButton.disabled =
     !appState.room ||
     appState.room.hostPlayerId !== appState.playerId ||
@@ -2021,9 +1813,9 @@ function applyStateDiff(appState, nextState) {
       }
 
       appState.processedLogIds.add(entry.id);
-        appState.playLog = [entry, ...appState.playLog].slice(0, 4);
-        freshSteps.push(step);
-      });
+      appState.playLog = [entry, ...appState.playLog].slice(0, 4);
+      freshSteps.push(step);
+    });
 
     if (freshSteps.length) {
       const latestStep = freshSteps[freshSteps.length - 1];
@@ -2149,28 +1941,46 @@ async function handleStartGame(appState, elements) {
   }
 }
 
-async function handleSubmitCard(appState, elements) {
-  if (!appState.room?.roomCode || appState.selectedCardNumber === null) {
+async function handleSubmitCard(appState, elements, cardNumber = appState.selectedCardNumber) {
+  const normalizedCardNumber = Number(cardNumber);
+  const state = appState.serverState;
+  const alreadySubmitted = Boolean(state?.round?.selectedCardsByPlayer?.[appState.playerId]);
+
+  if (
+    !appState.room?.roomCode ||
+    !state ||
+    appState.pendingSubmit ||
+    alreadySubmitted ||
+    !Number.isInteger(normalizedCardNumber) ||
+    normalizedCardNumber < 1 ||
+    normalizedCardNumber > 104 ||
+    Boolean(state.manualChoice) ||
+    Boolean(state.round.pendingResolution) ||
+    state.round.phase === "finished"
+  ) {
     return;
   }
 
-  appState.transientStatus = `${appState.selectedCardNumber}번 카드를 서버로 전송하는 중입니다.`;
+  appState.selectedCardNumber = normalizedCardNumber;
+  appState.transientStatus = `${normalizedCardNumber}번 카드를 서버로 전송하는 중입니다.`;
   appState.pendingSubmit = true;
   renderApp(appState, elements);
 
   const response = await withAck(appState.socket, "submitCard", {
     roomCode: appState.room.roomCode,
-    cardNumber: appState.selectedCardNumber,
+    cardNumber: normalizedCardNumber,
   });
 
   if (!response.ok) {
     appState.pendingSubmit = false;
+    appState.selectedCardNumber = null;
     appState.transientStatus = response.error || "카드 제출에 실패했습니다.";
     renderApp(appState, elements);
     return;
   }
 
   appState.pendingSubmit = false;
+  appState.selectedCardNumber = null;
   appState.transientStatus = "";
   renderApp(appState, elements);
 }
@@ -2616,34 +2426,19 @@ function initializeApp(socket) {
   });
 
   elements.playerHand.addEventListener("click", (event) => {
-    if (!appState.serverState || appState.serverState.round.pendingResolution) {
+    if (!appState.serverState || appState.pendingSubmit) {
       return;
     }
 
     const cardButton = event.target.closest("[data-card-number]");
 
-    if (!cardButton) {
+    if (!cardButton || cardButton.disabled) {
       return;
     }
 
     const cardNumber = Number(cardButton.dataset.cardNumber);
-    const now = Date.now();
-    const isDoubleClick =
-      appState.lastHandClick.cardNumber === cardNumber &&
-      now - appState.lastHandClick.timestamp <= 360;
-
-    appState.selectedCardNumber =
-      appState.selectedCardNumber === cardNumber && !isDoubleClick ? null : cardNumber;
-    appState.lastHandClick = {
-      cardNumber,
-      timestamp: now,
-    };
     appState.transientStatus = "";
-    rerender();
-
-    if (isDoubleClick) {
-      handleSubmitCard(appState, elements);
-    }
+    handleSubmitCard(appState, elements, cardNumber);
   });
 
   elements.boardRows.addEventListener("click", (event) => {
@@ -2661,10 +2456,6 @@ function initializeApp(socket) {
     }
 
     handleChooseRow(appState, elements, rowId);
-  });
-
-  elements.submitButton.addEventListener("click", () => {
-    handleSubmitCard(appState, elements);
   });
 
   elements.restartButton.addEventListener("click", () => {

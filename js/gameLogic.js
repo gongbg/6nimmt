@@ -141,15 +141,15 @@ function normalizePlayer(playerInput) {
     throw new Error("Player data is required.");
   }
 
-    const {
-      id,
-      nickname,
-      isBot = false,
-      avatar = null,
-      hand = [],
-      penaltyCards = playerInput.collectedPenaltyCards ?? [],
-      totalPenaltyPoints = 0,
-    } = playerInput;
+  const {
+    id,
+    nickname,
+    isBot = false,
+    avatar = null,
+    hand = [],
+    penaltyCards = playerInput.collectedPenaltyCards ?? [],
+    totalPenaltyPoints = 0,
+  } = playerInput;
 
   if (!id) {
     throw new Error("Player id is required.");
@@ -160,22 +160,22 @@ function normalizePlayer(playerInput) {
   }
 
   const normalizedPenaltyCards = penaltyCards.map(normalizeCard);
-    const normalizedPlayer = {
-      id,
-      nickname,
-      isBot: Boolean(isBot),
-      avatar:
-        avatar && typeof avatar === "object"
-          ? {
-              skinColor: avatar.skinColor ?? null,
-              eyeType: avatar.eyeType ?? null,
-              mouthType: avatar.mouthType ?? null,
-            }
-          : null,
-      hand: hand.map(normalizeCard),
-      penaltyCards: normalizedPenaltyCards,
-      penaltyPoints: sumPenalty(normalizedPenaltyCards),
-      totalPenaltyPoints,
+  const normalizedPlayer = {
+    id,
+    nickname,
+    isBot: Boolean(isBot),
+    avatar:
+      avatar && typeof avatar === "object"
+        ? {
+            skinColor: avatar.skinColor ?? null,
+            eyeType: avatar.eyeType ?? null,
+            mouthType: avatar.mouthType ?? null,
+          }
+        : null,
+    hand: hand.map(normalizeCard),
+    penaltyCards: normalizedPenaltyCards,
+    penaltyPoints: sumPenalty(normalizedPenaltyCards),
+    totalPenaltyPoints,
   };
 
   normalizedPlayer.collectedPenaltyCards = normalizedPlayer.penaltyCards;
@@ -837,15 +837,15 @@ class GameState {
   toJSON() {
     return {
       roomId: this.roomId,
-        players: this.players.map((player) => ({
-          id: player.id,
-          nickname: player.nickname,
-          isBot: player.isBot,
-          avatar: player.avatar ? { ...player.avatar } : null,
-          hand: player.hand.map(cloneCard),
-          penaltyCards: player.penaltyCards.map(cloneCard),
-          collectedPenaltyCards: player.penaltyCards.map(cloneCard),
-          penaltyPoints: player.penaltyPoints,
+      players: this.players.map((player) => ({
+        id: player.id,
+        nickname: player.nickname,
+        isBot: player.isBot,
+        avatar: player.avatar ? { ...player.avatar } : null,
+        hand: player.hand.map(cloneCard),
+        penaltyCards: player.penaltyCards.map(cloneCard),
+        collectedPenaltyCards: player.penaltyCards.map(cloneCard),
+        penaltyPoints: player.penaltyPoints,
         totalPenaltyPoints: player.totalPenaltyPoints,
       })),
       rows: this.rows.map((row) => ({

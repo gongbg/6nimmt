@@ -1041,5 +1041,5 @@ io.on("connection", (socket) => {
 });
 
 httpServer.listen(PORT, () => {
-console.log(`Six Bugs server listening on http://localhost:${PORT}`);
+  console.log(`Six Bugs server listening on http://localhost:${PORT}`);
 });
