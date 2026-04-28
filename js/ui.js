@@ -1186,7 +1186,13 @@ function renderCurrentTurnCards(state, elements) {
 
 function renderPlayerHand(state, appState, elements) {
   const currentPlayer = getCurrentPlayer(state, appState.playerId);
-  const hand = [...(currentPlayer?.hand ?? [])].sort((left, right) => left.number - right.number);
+  const submittedCardNumber = state.round.selectedCardsByPlayer?.[appState.playerId]?.number ?? null;
+  const hiddenSubmittedCardNumber = appState.pendingSubmit
+    ? appState.selectedCardNumber
+    : submittedCardNumber;
+  const hand = [...(currentPlayer?.hand ?? [])]
+    .filter((card) => card.number !== hiddenSubmittedCardNumber)
+    .sort((left, right) => left.number - right.number);
   const isResolving = Boolean(state.round.pendingResolution);
   const isChoosingRow = Boolean(state.manualChoice);
   const isReconnectPaused = Boolean(state.reconnectPause?.paused);
