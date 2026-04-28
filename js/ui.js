@@ -675,6 +675,8 @@ function createAppState(socket) {
     pendingSubmit: false,
     playLog: [],
     recentPlayedNumbers: [],
+    playedCardLabelsByNumber: new Map(),
+    playedCardLabelTurn: null,
     highlightedRowIds: [],
     cleanedRowIds: [],
     cleanupAnnouncement: "",
@@ -1141,6 +1143,13 @@ function renderBoardRows(state, appState, elements) {
 
     row.cards.forEach((card, index) => {
       const cardElement = createTableCard(card, rotations[index % rotations.length]);
+      const playerName = appState.playedCardLabelsByNumber.get(card.number);
+
+      if (playerName) {
+        const label = createUiElement("span", "played-card-label", playerName);
+        label.title = playerName;
+        cardElement.appendChild(label);
+      }
 
       if (appState.recentPlayedNumbers.includes(card.number)) {
         cardElement.classList.add("recent-card-enter");
@@ -1885,6 +1894,8 @@ function renderApp(appState, elements) {
 
 function resetHighlightState(appState) {
   appState.recentPlayedNumbers = [];
+  appState.playedCardLabelsByNumber = new Map();
+  appState.playedCardLabelTurn = null;
   appState.highlightedRowIds = [];
   appState.cleanedRowIds = [];
   appState.cleanupAnnouncement = "";
@@ -1940,6 +1951,10 @@ function applyStateDiff(appState, nextState) {
   const previousResolvedCount = previousState?.round?.resolvedCards?.length ?? 0;
   const nextResolvedCards = nextState.round?.resolvedCards ?? [];
   const nextResolvedCount = nextResolvedCards.length;
+  const turnChanged = Boolean(previousState) && previousState.round?.turn !== nextState.round.turn;
+  const previousHadPendingResolution = Boolean(previousState?.round?.pendingResolution);
+  const nextHasPendingResolution = Boolean(nextState.round.pendingResolution);
+  const resolutionStarted = Boolean(previousState) && !previousHadPendingResolution && nextHasPendingResolution;
   const roundRestarted =
     !previousState ||
     previousState.round.number !== nextState.round.number ||
@@ -1947,6 +1962,9 @@ function applyStateDiff(appState, nextState) {
 
   if (roundRestarted) {
     resetGameUiState(appState);
+  } else if (resolutionStarted) {
+    appState.playedCardLabelsByNumber = new Map();
+    appState.playedCardLabelTurn = nextState.round.turn;
   }
 
   if (nextResolvedCount > previousResolvedCount) {
@@ -1963,6 +1981,9 @@ function applyStateDiff(appState, nextState) {
       appState.processedLogIds.add(entry.id);
       appState.enteringLogIds.add(entry.id);
       appState.playLog = [entry, ...appState.playLog].slice(0, 4);
+      appState.playedCardLabelsByNumber = new Map();
+      appState.playedCardLabelTurn = turnChanged ? previousState.round.turn : nextState.round.turn;
+      appState.playedCardLabelsByNumber.set(step.card.number, entry.playerName);
       freshSteps.push(step);
     });
 
