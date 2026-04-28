@@ -807,6 +807,36 @@ function getPlayerName(state, playerId) {
   return state?.players?.find((player) => player.id === playerId)?.nickname ?? playerId;
 }
 
+function getLatestChatByPlayer(appState) {
+  const latestChatByPlayer = new Map();
+  const chatMessages = Array.isArray(appState.room?.chatMessages) ? appState.room.chatMessages : [];
+
+  for (const entry of chatMessages) {
+    if (!entry?.playerId || entry.isSystem || !entry.message) {
+      continue;
+    }
+
+    latestChatByPlayer.set(entry.playerId, entry);
+  }
+
+  return latestChatByPlayer;
+}
+
+function createProfileChatBubble(chatEntry, isSelf) {
+  const bubble = createUiElement(
+    "div",
+    [
+      "profile-chat-bubble",
+      isSelf ? "profile-chat-bubble-self" : "",
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+  bubble.textContent = chatEntry.message;
+  bubble.title = chatEntry.message;
+  return bubble;
+}
+
 function getCurrentRoomMode(appState) {
   return appState.serverState?.mode ?? appState.room?.mode ?? "multiplayer";
 }
@@ -1207,6 +1237,7 @@ function renderPlayerStatePanel(state, appState, elements) {
     ...state.players.filter((player) => player.id === appState.playerId),
     ...state.players.filter((player) => player.id !== appState.playerId),
   ];
+  const latestChatByPlayer = getLatestChatByPlayer(appState);
 
   orderedPlayers.forEach((player, index) => {
     const entry = statusByPlayerId.get(player.id) ?? {
@@ -1219,6 +1250,7 @@ function renderPlayerStatePanel(state, appState, elements) {
       reconnecting: Boolean(player.reconnecting || player.connected === false),
     };
     const isSelf = player.id === appState.playerId;
+    const latestChat = latestChatByPlayer.get(player.id);
     const penaltyPoints = getDisplayPenaltyPoints(player, state.round);
     const submitted = isSelf ? entry.submitted || appState.pendingSubmit : entry.submitted;
     const reconnecting = Boolean(entry.reconnecting || player.reconnecting || player.connected === false);
@@ -1241,14 +1273,14 @@ function renderPlayerStatePanel(state, appState, elements) {
       "div",
       [
         "rounded-2xl border border-outline-variant/15 bg-surface-container-lowest/65 px-3 py-3",
-        "flex items-center justify-between gap-3",
+        "flex items-start justify-between gap-3",
         isSelf ? "ring-1 ring-primary/25" : "",
       ]
         .filter(Boolean)
         .join(" ")
     );
 
-    const left = createUiElement("div", "min-w-0 flex items-center gap-3");
+    const left = createUiElement("div", "min-w-0 flex flex-1 items-start gap-3");
     const avatarWrap = createUiElement("div", "h-10 w-10 shrink-0");
     avatarWrap.appendChild(
       player.isBot
@@ -1287,6 +1319,9 @@ function renderPlayerStatePanel(state, appState, elements) {
     );
     textWrap.append(titleRow, meta);
     meta.append(penaltyMeta);
+    if (latestChat) {
+      textWrap.appendChild(createProfileChatBubble(latestChat, isSelf));
+    }
     left.append(avatarWrap, textWrap);
 
     const right = createUiElement("div", "shrink-0 flex flex-col items-end gap-2");
